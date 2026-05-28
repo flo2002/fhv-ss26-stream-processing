@@ -16,3 +16,14 @@ Questions:
 - We use the Kafka Docker image to set it up locally on each machine 
   - We have two Macs and two Windows machines in our team, so containerization is probably a good idea.
 
+## Run the Starter Container
+```powershell
+docker compose up --build
+```
+
+The producer polls European METAR station files from `tgftp.nws.noaa.gov` and writes JSON messages to Kafka topic `noaa.weather.raw`.
+
+To read messages:
+```powershell
+docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:19092 --topic noaa.weather.raw --from-beginning
+```
