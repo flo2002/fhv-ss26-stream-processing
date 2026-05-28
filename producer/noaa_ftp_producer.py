@@ -251,7 +251,7 @@ def main() -> None:
     ftp_timeout = env_int("FTP_TIMEOUT_SECONDS", 30)
     remote_dir = os.getenv("NOAA_FTP_DIR", "/data/observations/metar/stations")
     file_patterns = parse_patterns(os.getenv("NOAA_FILE_PATTERNS", os.getenv("NOAA_FILE_PATTERN", "E*.TXT,L*.TXT")))
-    poll_interval = env_float("POLL_INTERVAL_SECONDS", 300)
+    poll_interval = env_float("POLL_INTERVAL_SECONDS", 900)
     max_files = env_int("MAX_FILES_PER_POLL", 50)
     max_bytes = env_int("MAX_FILE_BYTES", 262144)
     state_path = Path(os.getenv("STATE_FILE", "/app/state/noaa_ftp_state.json"))

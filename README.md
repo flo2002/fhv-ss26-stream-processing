@@ -1,5 +1,5 @@
 # fhv-ss26-stream-processing
-Processing NOAA weather data with Kafka.
+Repo Description: Processing NOAA weather data with Kafka.
 
 ## Ideas to poll the data via FTP
 - Kafka Connect with FTP Source Connector
@@ -15,6 +15,14 @@ Questions:
 ### Setting up Kafka
 - We use the Kafka Docker image to set it up locally on each machine 
   - We have two Macs and two Windows machines in our team, so containerization is probably a good idea.
+- How often should we poll the data? How much data is that? Aren't we hitting the limit of the FTP server if we poll too often?
+  - Polls every 15 minutes.
+  - Sends at most 50 changed files per poll, reading max 256 KiB per file.
+  - Data is updated every hour: Source: https://www.weather.gov/tg/datahelp
+- Is there a close FTP server that would be faster to poll from?
+  - Yes, there is a European one: `tgftp.nws.noaa.gov`
+- How about old data? Do we want to poll it as well? How much data is that?
+
 
 ## Run the Starter Container
 ```powershell

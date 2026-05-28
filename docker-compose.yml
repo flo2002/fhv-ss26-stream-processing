@@ -32,7 +32,7 @@ services:
       NOAA_FTP_HOST: tgftp.nws.noaa.gov
       NOAA_FTP_DIR: /data/observations/metar/stations
       NOAA_FILE_PATTERNS: E*.TXT,L*.TXT
-      POLL_INTERVAL_SECONDS: "300"
+      POLL_INTERVAL_SECONDS: "900"
       MAX_FILES_PER_POLL: "50"
       MAX_FILE_BYTES: "262144"
       STATE_FILE: /app/state/noaa_ftp_state.json
