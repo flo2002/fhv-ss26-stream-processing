@@ -35,3 +35,6 @@ To read messages:
 ```powershell
 docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka:19092 --topic noaa.weather.raw --from-beginning
 ```
+## Task Distribution
+round robin with:
+- 1 Florian, 2 Chris, 3 Mykola, 4 Haroldas
