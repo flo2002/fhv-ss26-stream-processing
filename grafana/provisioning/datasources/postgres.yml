@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: NOAA Postgres
+    type: postgres
+    uid: noaa-postgres
+    access: proxy
+    url: postgres:5432
+    user: noaa
+    database: noaa
+    isDefault: true
+    secureJsonData:
+      password: noaa
+    jsonData:
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false

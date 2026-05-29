@@ -159,7 +159,48 @@ def has_changed(remote_file: RemoteFile, state: Dict[str, Dict[str, object]]) ->
     stored = state.get(remote_file.path)
     if not stored:
         return True
-    return not stored.get("completed") or stored.get("signature") != signature
+    if not stored.get("completed"):
+        return True
+
+    stored_signature = stored.get("signature")
+    if stored_signature == signature:
+        return False
+
+    if isinstance(stored_signature, dict):
+        same_size = stored_signature.get("size") == signature.get("size")
+        missing_modified = stored_signature.get("modified") is None
+        if same_size and missing_modified:
+            return False
+
+    return True
+
+
+def resume_record_number(remote_file: RemoteFile, state: Dict[str, Dict[str, object]]) -> int:
+    stored = state.get(remote_file.path)
+    if not stored or stored.get("completed"):
+        return 0
+
+    stored_signature = stored.get("signature")
+    if isinstance(stored_signature, dict) and stored_signature.get("size") not in {None, remote_file.size}:
+        return 0
+
+    records_sent = stored.get("records_sent", 0)
+    return int(records_sent) if isinstance(records_sent, int) else 0
+
+
+def mark_file_progress(
+    state_path: Path,
+    state: Dict[str, Dict[str, object]],
+    remote_file: RemoteFile,
+    records_sent: int,
+) -> None:
+    state[remote_file.path] = {
+        "signature": file_signature(remote_file),
+        "completed": False,
+        "records_sent": records_sent,
+        "updated_at": utc_now(),
+    }
+    save_state(state_path, state)
 
 
 def retrieve_bytes(ftp: ftplib.FTP, remote_path: str, max_bytes: int) -> bytes:
@@ -258,41 +299,78 @@ def poll_once(
     producer: KafkaProducer,
     topic: str,
     historical_year: str,
+    state_path: Path,
+    progress_interval_records: int,
 ) -> int:
     host, user, password, timeout = ftp_settings
     sent = 0
     with connect_ftp(host, user, password, timeout) as ftp:
         files = list_files(ftp, remote_dir, patterns)
-        pending = changed_files(files, state, max_files)
-        file_limit = "all" if max_files <= 0 else str(max_files)
-        LOGGER.info("found %s files, %s pending, sending up to %s files", len(files), len(pending), file_limit)
+    pending = changed_files(files, state, max_files)
+    file_limit = "all" if max_files <= 0 else str(max_files)
+    LOGGER.info("found %s files, %s pending, sending up to %s files", len(files), len(pending), file_limit)
 
-        for remote_file in pending:
-            if STOP:
-                break
+    for index, remote_file in enumerate(pending, start=1):
+        if STOP:
+            break
+
+        LOGGER.info("downloading file %s/%s: %s", index, len(pending), remote_file.path)
+        with connect_ftp(host, user, password, timeout) as ftp:
             payload = retrieve_bytes(ftp, remote_file.path, max_bytes)
-            records = decode_historical_records(remote_file, payload)
-            LOGGER.info("sending %s records from %s", len(records), remote_file.path)
 
-            for record_number, record in enumerate(records, start=1):
-                if STOP:
-                    break
-                event = build_event(host, remote_file, record, record_number, historical_year)
-                key = f"{remote_file.path}:{record_number}"
-                future = producer.send(topic, key=key, value=event)
-                future.get(timeout=30)
-                sent += 1
+        records = decode_historical_records(remote_file, payload)
+        already_sent = resume_record_number(remote_file, state)
+        LOGGER.info("sending %s records from %s (resuming after %s)", len(records), remote_file.path, already_sent)
 
+        futures = []
+        last_confirmed_record = already_sent
+        for record_number, record in enumerate(records, start=1):
+            if record_number <= already_sent:
+                continue
             if STOP:
                 break
+            event = build_event(host, remote_file, record, record_number, historical_year)
+            key = f"{remote_file.path}:{record_number}"
+            futures.append(producer.send(topic, key=key, value=event))
+            sent += 1
 
-            state[remote_file.path] = {
-                "signature": file_signature(remote_file),
-                "completed": True,
-                "records_sent": len(records),
-                "completed_at": utc_now(),
-            }
-            LOGGER.info("completed %s (%s compressed bytes, %s records)", remote_file.path, remote_file.size, len(records))
+            if len(futures) >= progress_interval_records:
+                for future in futures:
+                    future.get(timeout=30)
+                producer.flush(timeout=30)
+                futures.clear()
+                last_confirmed_record = record_number
+                mark_file_progress(state_path, state, remote_file, last_confirmed_record)
+                LOGGER.info("progress %s: %s/%s records", remote_file.path, record_number, len(records))
+
+        for future in futures:
+            future.get(timeout=30)
+        producer.flush(timeout=30)
+        if futures:
+            last_confirmed_record = record_number
+
+        if last_confirmed_record > already_sent and last_confirmed_record < len(records):
+            mark_file_progress(state_path, state, remote_file, last_confirmed_record)
+            LOGGER.info("saved partial progress %s: %s/%s records", remote_file.path, last_confirmed_record, len(records))
+
+        if STOP:
+            break
+
+        state[remote_file.path] = {
+            "signature": file_signature(remote_file),
+            "completed": True,
+            "records_sent": len(records),
+            "completed_at": utc_now(),
+        }
+        save_state(state_path, state)
+        LOGGER.info(
+            "completed %s (%s compressed bytes, %s records); progress=%s/%s files",
+            remote_file.path,
+            remote_file.size,
+            len(records),
+            index,
+            len(pending),
+        )
 
     producer.flush(timeout=30)
     return sent
@@ -316,8 +394,10 @@ def main() -> None:
     remote_dir = os.getenv("NOAA_FTP_DIR", f"/pub/data/noaa/{historical_year}")
     file_patterns = parse_patterns(os.getenv("NOAA_FILE_PATTERNS", os.getenv("NOAA_FILE_PATTERN", f"*-{historical_year}.gz")))
     poll_interval = env_float("POLL_INTERVAL_SECONDS", 86400)
+    retry_interval = env_float("RETRY_INTERVAL_SECONDS", 60)
     max_files = env_int("MAX_FILES_PER_POLL", 0)
     max_bytes = env_int("MAX_FILE_BYTES", 0)
+    progress_interval_records = env_int("PROGRESS_INTERVAL_RECORDS", 1000)
     run_once = env_bool("RUN_ONCE", True)
     state_path = Path(os.getenv("STATE_FILE", "/app/state/noaa_ftp_state.json"))
     kafka_bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
@@ -338,6 +418,7 @@ def main() -> None:
     ftp_settings = (ftp_host, ftp_user, ftp_password, ftp_timeout)
 
     while not STOP:
+        sleep_interval = poll_interval
         try:
             sent = poll_once(
                 ftp_settings=ftp_settings,
@@ -349,18 +430,21 @@ def main() -> None:
                 producer=producer,
                 topic=kafka_topic,
                 historical_year=historical_year,
+                state_path=state_path,
+                progress_interval_records=progress_interval_records,
             )
             save_state(state_path, state)
             LOGGER.info("poll complete, sent %s records", sent)
-        except (ftplib.all_errors, KafkaError, OSError, RuntimeError) as exc:
+            if run_once:
+                break
+        except Exception as exc:
             LOGGER.exception("poll failed: %s", exc)
-
-        if run_once:
-            break
+            save_state(state_path, state)
+            sleep_interval = retry_interval
 
         slept = 0.0
-        while not STOP and slept < poll_interval:
-            sleep_for = min(1.0, poll_interval - slept)
+        while not STOP and slept < sleep_interval:
+            sleep_for = min(1.0, sleep_interval - slept)
             time.sleep(sleep_for)
             slept += sleep_for
 

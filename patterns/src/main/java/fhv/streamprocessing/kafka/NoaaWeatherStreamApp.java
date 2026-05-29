@@ -1,5 +1,7 @@
 package fhv.streamprocessing.kafka;
 
+import fhv.streamprocessing.dashboard.DashboardSink;
+import fhv.streamprocessing.dashboard.PostgresDashboardSink;
 import fhv.streamprocessing.model.NoaaObservation;
 import fhv.streamprocessing.model.TemperatureAggregate;
 import fhv.streamprocessing.serde.JsonSerde;
@@ -29,12 +31,14 @@ public final class NoaaWeatherStreamApp {
 
     public static void main(String[] args) {
         AppConfig config = AppConfig.fromEnvironment();
-        Topology topology = buildTopology(config);
+        DashboardSink dashboardSink = createDashboardSink(config);
+        Topology topology = buildTopology(config, dashboardSink);
         KafkaStreams streams = new KafkaStreams(topology, streamsProperties(config));
         CountDownLatch shutdownLatch = new CountDownLatch(1);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             streams.close(Duration.ofSeconds(10));
+            dashboardSink.close();
             shutdownLatch.countDown();
         }));
 
@@ -54,8 +58,12 @@ public final class NoaaWeatherStreamApp {
     }
 
     public static Topology buildTopology(AppConfig config) {
+        return buildTopology(config, DashboardSink.noop());
+    }
+
+    public static Topology buildTopology(AppConfig config, DashboardSink dashboardSink) {
         StreamsBuilder builder = new StreamsBuilder();
-        KStream<String, NoaaObservation> observations = noaaObservationStream(builder, config.inputTopics());
+        KStream<String, NoaaObservation> observations = noaaObservationStream(builder, config.inputTopics(), dashboardSink);
 
         observations.peek((key, observation) -> System.out.printf(
             "station=%s day=%s observedAt=%s tempC=%s sourceKey=%s%n",
@@ -68,6 +76,7 @@ public final class NoaaWeatherStreamApp {
 
         dailyAverageTemperatures(observations)
             .toStream()
+            .peek(dashboardSink::recordDailyAverage)
             .mapValues(TemperatureAggregate::averageTemperatureCelsius)
             .to(config.dailyAverageTopic(), Produced.with(Serdes.String(), Serdes.Double()));
 
@@ -75,10 +84,20 @@ public final class NoaaWeatherStreamApp {
     }
 
     public static KStream<String, NoaaObservation> noaaObservationStream(StreamsBuilder builder, List<String> inputTopics) {
+        return noaaObservationStream(builder, inputTopics, DashboardSink.noop());
+    }
+
+    public static KStream<String, NoaaObservation> noaaObservationStream(
+        StreamsBuilder builder,
+        List<String> inputTopics,
+        DashboardSink dashboardSink
+    ) {
         return builder
             .stream(inputTopics, Consumed.with(Serdes.String(), new JsonSerde<>(NoaaKafkaMessage.class)))
+            .peek((key, value) -> dashboardSink.incrementRawRequests())
             .mapValues(NoaaKafkaMessage::toObservation)
-            .filter((key, observation) -> observation.isUsableForTemperatureAverages());
+            .filter((key, observation) -> observation.isUsableForTemperatureAverages())
+            .peek((key, value) -> dashboardSink.incrementParsedRequests());
     }
 
     public static KTable<String, TemperatureAggregate> dailyAverageTemperatures(KStream<String, NoaaObservation> observations) {
@@ -104,18 +123,33 @@ public final class NoaaWeatherStreamApp {
         return props;
     }
 
+    private static DashboardSink createDashboardSink(AppConfig config) {
+        if (!config.dashboardEnabled()) {
+            return DashboardSink.noop();
+        }
+        return new PostgresDashboardSink(config.dashboardJdbcUrl(), config.dashboardDbUser(), config.dashboardDbPassword());
+    }
+
     public record AppConfig(
         String bootstrapServers,
         String applicationId,
         List<String> inputTopics,
-        String dailyAverageTopic
+        String dailyAverageTopic,
+        boolean dashboardEnabled,
+        String dashboardJdbcUrl,
+        String dashboardDbUser,
+        String dashboardDbPassword
     ) {
         public static AppConfig fromEnvironment() {
             return new AppConfig(
                 env("KAFKA_BOOTSTRAP_SERVERS", "localhost:19094"),
                 env("KAFKA_STREAMS_APPLICATION_ID", "noaa-weather-patterns"),
                 topics(env("KAFKA_INPUT_TOPICS", "noaa.weather.raw")),
-                env("KAFKA_DAILY_AVERAGE_TOPIC", "noaa.weather.daily-average-temperature")
+                env("KAFKA_DAILY_AVERAGE_TOPIC", "noaa.weather.daily-average-temperature"),
+                envBoolean("DASHBOARD_SINK_ENABLED", true),
+                env("DASHBOARD_JDBC_URL", "jdbc:postgresql://localhost:5432/noaa"),
+                env("DASHBOARD_DB_USER", "noaa"),
+                env("DASHBOARD_DB_PASSWORD", "noaa")
             );
         }
 
@@ -129,6 +163,14 @@ public final class NoaaWeatherStreamApp {
                 .map(String::trim)
                 .filter(topic -> !topic.isEmpty())
                 .toList();
+        }
+
+        private static boolean envBoolean(String name, boolean defaultValue) {
+            String value = System.getenv(name);
+            if (value == null || value.isBlank()) {
+                return defaultValue;
+            }
+            return Boolean.parseBoolean(value);
         }
     }
 }

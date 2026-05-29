@@ -22,10 +22,26 @@ services:
     volumes:
       - kafka_data:/tmp/kraft-combined-logs
 
+  kafka-init:
+    image: apache/kafka:3.8.1
+    depends_on:
+      - kafka
+    command:
+      - /bin/sh
+      - -c
+      - |
+        until /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --list >/dev/null 2>&1; do
+          echo "waiting for kafka"
+          sleep 2
+        done
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.raw --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.daily-average-temperature --partitions 1 --replication-factor 1
+
   noaa-producer:
     build: .
     depends_on:
-      - kafka
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       KAFKA_TOPIC: noaa.weather.raw
@@ -44,6 +60,52 @@ services:
       - producer_state:/app/state
     restart: "no"
 
+  noaa-stream-client:
+    build:
+      context: ./patterns
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_started
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      KAFKA_INPUT_TOPICS: noaa.weather.raw
+      KAFKA_DAILY_AVERAGE_TOPIC: noaa.weather.daily-average-temperature
+      KAFKA_STREAMS_APPLICATION_ID: noaa-weather-dashboard
+      DASHBOARD_SINK_ENABLED: "true"
+      DASHBOARD_JDBC_URL: jdbc:postgresql://postgres:5432/noaa
+      DASHBOARD_DB_USER: noaa
+      DASHBOARD_DB_PASSWORD: noaa
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: noaa
+      POSTGRES_USER: noaa
+      POSTGRES_PASSWORD: noaa
+    ports:
+      - "15432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    depends_on:
+      - postgres
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+
 volumes:
   kafka_data:
   producer_state:
+  postgres_data:
+  grafana_data:

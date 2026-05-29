@@ -48,6 +48,38 @@ mvn exec:java
 
 For a fresh `KAFKA_STREAMS_APPLICATION_ID`, the stream starts at the beginning of the topic so it can process the already-produced 2025 historical data. So, every time the Java application is started, the full data from Kafka is reprocessed.
 
+## Grafana Dashboard
+The Compose setup includes Postgres and Grafana for visual monitoring:
+
+- Grafana: http://localhost:3000
+- Login: `admin` / `admin`
+- Dashboard: `NOAA / NOAA Kafka Stream Processing`
+- Postgres host port: `15432`
+
+The Java stream client writes dashboard data into Postgres while it consumes Kafka:
+
+- `noaa_stream_counts`: total raw Kafka messages and total parsed/usable observations.
+- `noaa_daily_station_average`: one row per station and day with the average temperature in Celsius.
+
+Start the dashboard stack:
+```powershell
+docker compose up --build kafka postgres grafana noaa-stream-client
+```
+
+The dashboard service uses `KAFKA_STREAMS_APPLICATION_ID=noaa-weather-dashboard`. If you need to rebuild the dashboard from existing Kafka data again, change that value to a new id or reset the consumer group before restarting the service.
+
+The dashboard contains:
+- `Raw Requests`: total records read from `noaa.weather.raw`.
+- `Parsed Requests`: total records successfully parsed and usable for temperature averages.
+- `Daily Average Temperature Per Station`: line plot with 2025 days on the x-axis and one station series per `station_id`.
+
+Check ingestion progress:
+```powershell
+.\scripts\check-ingestion.ps1
+```
+
+The producer does not keep the 2025 gzip files on disk. It streams each archive file from NOAA FTP, writes each decoded observation into Kafka, and records completed/partial file progress in the `producer_state` Docker volume. A full run is done when the checkpoint shows all NOAA archive files completed. The NCEI 2025 directory currently lists about 12,815 station-year gzip files, so a few thousand Kafka records means only the first station file has been processed.
+
 ## Task Distribution
 round robin with:
 - 1 Florian, 2 Chris, 3 Mykola, 4 Haroldas
@@ -58,5 +90,3 @@ thoughts:
 - Python is no option (further info from Haroldas) --> Java (especially with Java/Kafka Streams) is used.
 - Where should parsed data go? --> Into a new topic `noaa.weather.parsed` with a more structured format (e.g. JSON with fields for station, date, temperature, etc.)
 - How to visualize the results?
-
-
