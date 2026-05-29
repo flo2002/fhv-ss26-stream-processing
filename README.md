@@ -89,4 +89,6 @@ round robin with:
 thoughts:
 - Python is no option (further info from Haroldas) --> Java (especially with Java/Kafka Streams) is used.
 - Where should parsed data go? --> Into a new topic `noaa.weather.parsed` with a more structured format (e.g. JSON with fields for station, date, temperature, etc.)
-- How to visualize the results?
+- How to visualize the results? --> I created an optional Grafana dashboard. That also needs a postgres db for storing/caching the aggregated data.
+
+![Pattern 1: Daily Average Temperature for Each Station](./assets/Screenshot%202026-05-29%20112959.png)
