@@ -4,8 +4,8 @@ Repo Description: Processing NOAA weather data with Kafka.
 ## Ideas to poll the data via FTP
 - Kafka Connect with FTP Source Connector
   - is probably not good because of licensing issues
-- Custom Python script that polls the data and sends it to Kafka 
-  - is probably the most flexible, then we could also poll based on the timestamp and get only the new data, but we would have to implement the logic ourselves
+- Custom Python script that reads the historical data and sends it to Kafka
+  - is probably the most flexible, then we can track which archive files were already processed and resume without sending duplicates for completed files
 
 ### Doing some Research
 Questions:
@@ -22,6 +22,7 @@ Questions:
 - Is there a close FTP server that would be faster to poll from?
   - Yes, there is a European one: `tgftp.nws.noaa.gov`
 - How about old data? Do we want to poll it as well? How much data is that?
+- Problem: There is no live 2026 data, so we decided to just read the historical data from 2025, which is about 1.5 GB in total.
 
 
 ## Run the Starter Container

@@ -1,5 +1,6 @@
 import fnmatch
 import ftplib
+import gzip
 import json
 import logging
 import os
@@ -45,6 +46,19 @@ def env_float(name: str, default: float) -> float:
         return float(value)
     except ValueError:
         raise ValueError(f"{name} must be a number, got {value!r}") from None
+
+
+def env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "y", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "n", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean, got {value!r}")
 
 
 def utc_now() -> str:
@@ -141,38 +155,67 @@ def file_signature(remote_file: RemoteFile) -> Dict[str, object]:
 
 
 def has_changed(remote_file: RemoteFile, state: Dict[str, Dict[str, object]]) -> bool:
-    return state.get(remote_file.path) != file_signature(remote_file)
+    signature = file_signature(remote_file)
+    stored = state.get(remote_file.path)
+    if not stored:
+        return True
+    return not stored.get("completed") or stored.get("signature") != signature
 
 
-def retrieve_text(ftp: ftplib.FTP, remote_path: str, max_bytes: int) -> str:
+def retrieve_bytes(ftp: ftplib.FTP, remote_path: str, max_bytes: int) -> bytes:
     chunks: List[bytes] = []
     received = 0
 
     def collect(chunk: bytes) -> None:
         nonlocal received
-        if received >= max_bytes:
+        if max_bytes > 0 and received >= max_bytes:
             return
-        remaining = max_bytes - received
-        chunks.append(chunk[:remaining])
-        received += min(len(chunk), remaining)
+        if max_bytes > 0:
+            remaining = max_bytes - received
+            chunks.append(chunk[:remaining])
+            received += min(len(chunk), remaining)
+        else:
+            chunks.append(chunk)
+            received += len(chunk)
 
     ftp.retrbinary(f"RETR {remote_path}", collect)
-    return b"".join(chunks).decode("utf-8", errors="replace")
+    return b"".join(chunks)
 
 
-def build_event(source_host: str, remote_file: RemoteFile, content: str) -> Dict[str, object]:
+def decode_historical_records(remote_file: RemoteFile, payload: bytes) -> List[str]:
+    if remote_file.name.endswith(".gz"):
+        payload = gzip.decompress(payload)
+    return payload.decode("utf-8", errors="replace").splitlines()
+
+
+def parse_isd_observed_at(record: str) -> Optional[str]:
+    if len(record) < 27:
+        return None
+
+    date_value = record[15:23]
+    time_value = record[23:27]
+    try:
+        return datetime.strptime(f"{date_value}{time_value}", "%Y%m%d%H%M").replace(tzinfo=timezone.utc).isoformat()
+    except ValueError:
+        return None
+
+
+def build_event(source_host: str, remote_file: RemoteFile, record: str, record_number: int, historical_year: str) -> Dict[str, object]:
     return {
         "schema_version": 1,
         "source": {
-            "type": "noaa_ftp",
+            "type": "noaa_isd_historical_ftp",
             "host": source_host,
             "path": remote_file.path,
             "file_name": remote_file.name,
+            "year": historical_year,
         },
-        "observed_at": remote_file.modified,
+        "observed_at": parse_isd_observed_at(record),
         "ingested_at": utc_now(),
         "size_bytes": remote_file.size,
-        "payload_text": content,
+        "record_number": record_number,
+        "payload_format": "isd-fixed-width",
+        "payload_text": record,
     }
 
 
@@ -200,6 +243,8 @@ def create_kafka_producer(bootstrap_servers: str, client_id: str, retries: int) 
 
 def changed_files(files: Iterable[RemoteFile], state: Dict[str, Dict[str, object]], max_files: int) -> List[RemoteFile]:
     selected = [remote_file for remote_file in files if has_changed(remote_file, state)]
+    if max_files <= 0:
+        return selected
     return selected[:max_files]
 
 
@@ -212,24 +257,42 @@ def poll_once(
     state: Dict[str, Dict[str, object]],
     producer: KafkaProducer,
     topic: str,
+    historical_year: str,
 ) -> int:
     host, user, password, timeout = ftp_settings
     sent = 0
     with connect_ftp(host, user, password, timeout) as ftp:
         files = list_files(ftp, remote_dir, patterns)
         pending = changed_files(files, state, max_files)
-        LOGGER.info("found %s files, %s changed, sending up to %s", len(files), len(pending), max_files)
+        file_limit = "all" if max_files <= 0 else str(max_files)
+        LOGGER.info("found %s files, %s pending, sending up to %s files", len(files), len(pending), file_limit)
 
         for remote_file in pending:
             if STOP:
                 break
-            content = retrieve_text(ftp, remote_file.path, max_bytes)
-            event = build_event(host, remote_file, content)
-            future = producer.send(topic, key=remote_file.path, value=event)
-            future.get(timeout=30)
-            state[remote_file.path] = file_signature(remote_file)
-            sent += 1
-            LOGGER.info("sent %s (%s bytes)", remote_file.path, remote_file.size)
+            payload = retrieve_bytes(ftp, remote_file.path, max_bytes)
+            records = decode_historical_records(remote_file, payload)
+            LOGGER.info("sending %s records from %s", len(records), remote_file.path)
+
+            for record_number, record in enumerate(records, start=1):
+                if STOP:
+                    break
+                event = build_event(host, remote_file, record, record_number, historical_year)
+                key = f"{remote_file.path}:{record_number}"
+                future = producer.send(topic, key=key, value=event)
+                future.get(timeout=30)
+                sent += 1
+
+            if STOP:
+                break
+
+            state[remote_file.path] = {
+                "signature": file_signature(remote_file),
+                "completed": True,
+                "records_sent": len(records),
+                "completed_at": utc_now(),
+            }
+            LOGGER.info("completed %s (%s compressed bytes, %s records)", remote_file.path, remote_file.size, len(records))
 
     producer.flush(timeout=30)
     return sent
@@ -245,21 +308,31 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop_handler)
     socket.setdefaulttimeout(env_int("FTP_TIMEOUT_SECONDS", 30))
 
-    ftp_host = os.getenv("NOAA_FTP_HOST", "tgftp.nws.noaa.gov")
+    historical_year = os.getenv("NOAA_HISTORICAL_YEAR", "2025")
+    ftp_host = os.getenv("NOAA_FTP_HOST", "ftp.ncei.noaa.gov")
     ftp_user = os.getenv("NOAA_FTP_USER", "anonymous")
-    ftp_password = os.getenv("NOAA_FTP_PASSWORD", "anonymous@example.com")
+    ftp_password = os.getenv("NOAA_FTP_PASSWORD", "password")
     ftp_timeout = env_int("FTP_TIMEOUT_SECONDS", 30)
-    remote_dir = os.getenv("NOAA_FTP_DIR", "/data/observations/metar/stations")
-    file_patterns = parse_patterns(os.getenv("NOAA_FILE_PATTERNS", os.getenv("NOAA_FILE_PATTERN", "E*.TXT,L*.TXT")))
-    poll_interval = env_float("POLL_INTERVAL_SECONDS", 900)
-    max_files = env_int("MAX_FILES_PER_POLL", 50)
-    max_bytes = env_int("MAX_FILE_BYTES", 262144)
+    remote_dir = os.getenv("NOAA_FTP_DIR", f"/pub/data/noaa/{historical_year}")
+    file_patterns = parse_patterns(os.getenv("NOAA_FILE_PATTERNS", os.getenv("NOAA_FILE_PATTERN", f"*-{historical_year}.gz")))
+    poll_interval = env_float("POLL_INTERVAL_SECONDS", 86400)
+    max_files = env_int("MAX_FILES_PER_POLL", 0)
+    max_bytes = env_int("MAX_FILE_BYTES", 0)
+    run_once = env_bool("RUN_ONCE", True)
     state_path = Path(os.getenv("STATE_FILE", "/app/state/noaa_ftp_state.json"))
     kafka_bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
     kafka_topic = os.getenv("KAFKA_TOPIC", "noaa.weather.raw")
     kafka_client_id = os.getenv("KAFKA_CLIENT_ID", "noaa-ftp-producer")
 
-    LOGGER.info("starting NOAA FTP producer: host=%s dir=%s patterns=%s topic=%s", ftp_host, remote_dir, file_patterns, kafka_topic)
+    LOGGER.info(
+        "starting NOAA historical FTP producer: host=%s dir=%s patterns=%s topic=%s year=%s run_once=%s",
+        ftp_host,
+        remote_dir,
+        file_patterns,
+        kafka_topic,
+        historical_year,
+        run_once,
+    )
     state = load_state(state_path)
     producer = create_kafka_producer(kafka_bootstrap_servers, kafka_client_id, retries=20)
     ftp_settings = (ftp_host, ftp_user, ftp_password, ftp_timeout)
@@ -275,11 +348,15 @@ def main() -> None:
                 state=state,
                 producer=producer,
                 topic=kafka_topic,
+                historical_year=historical_year,
             )
             save_state(state_path, state)
             LOGGER.info("poll complete, sent %s records", sent)
         except (ftplib.all_errors, KafkaError, OSError, RuntimeError) as exc:
             LOGGER.exception("poll failed: %s", exc)
+
+        if run_once:
+            break
 
         slept = 0.0
         while not STOP and slept < poll_interval:
