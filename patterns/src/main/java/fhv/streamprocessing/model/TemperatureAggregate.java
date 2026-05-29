@@ -1,5 +1,7 @@
 package fhv.streamprocessing.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 public class TemperatureAggregate {
     private long count;
     private double sum;
@@ -31,6 +33,7 @@ public class TemperatureAggregate {
         this.sum = sum;
     }
 
+    @JsonIgnore
     public Double averageTemperatureCelsius() {
         return count == 0 ? null : sum / count;
     }

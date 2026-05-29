@@ -1,5 +1,6 @@
 package fhv.streamprocessing.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
@@ -13,6 +14,7 @@ public record NoaaObservation(
     long recordNumber,
     String rawPayload
 ) {
+    @JsonIgnore
     public boolean isUsableForTemperatureAverages() {
         return stationId != null
             && observationDate != null
@@ -21,6 +23,7 @@ public record NoaaObservation(
             && !temperatureQualityCode.equals("9");
     }
 
+    @JsonIgnore
     public String stationDayKey() {
         return stationId + "|" + observationDate;
     }
