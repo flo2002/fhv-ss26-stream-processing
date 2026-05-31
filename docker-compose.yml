@@ -72,6 +72,7 @@ services:
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       KAFKA_INPUT_TOPICS: noaa.weather.raw
+      STREAM_PATTERN: ${STREAM_PATTERN:-all}
       KAFKA_DAILY_AVERAGE_TOPIC: noaa.weather.daily-average-temperature
       KAFKA_YEARLY_RAIN_DURATION_TOPIC: noaa.weather.yearly-average-rain-duration
       RAIN_DURATION_YEAR: "2025"

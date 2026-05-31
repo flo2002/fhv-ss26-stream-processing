@@ -8,8 +8,10 @@ import fhv.streamprocessing.model.TemperatureAggregate;
 import fhv.streamprocessing.serde.JsonSerde;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.Serdes;
@@ -49,7 +51,12 @@ public final class NoaaWeatherStreamApp {
         });
 
         streams.start();
-        System.out.printf("NOAA Kafka stream started. bootstrap=%s topics=%s%n", config.bootstrapServers(), config.inputTopics());
+        System.out.printf(
+            "NOAA Kafka stream started. bootstrap=%s topics=%s patterns=%s%n",
+            config.bootstrapServers(),
+            config.inputTopics(),
+            config.streamPatterns()
+        );
 
         try {
             shutdownLatch.await();
@@ -76,24 +83,28 @@ public final class NoaaWeatherStreamApp {
             key
         ));
 
-        KStream<String, NoaaObservation> temperatureObservations = observations
-            .filter((key, observation) -> observation.isUsableForTemperatureAverages());
+        if (config.runsPattern(StreamPattern.TEMPERATURE)) {
+            KStream<String, NoaaObservation> temperatureObservations = observations
+                .filter((key, observation) -> observation.isUsableForTemperatureAverages());
 
-        dailyAverageTemperatures(temperatureObservations)
-            .toStream()
-            .peek(dashboardSink::recordDailyAverage)
-            .mapValues(TemperatureAggregate::averageTemperatureCelsius)
-            .to(config.dailyAverageTopic(), Produced.with(Serdes.String(), Serdes.Double()));
+            dailyAverageTemperatures(temperatureObservations)
+                .toStream()
+                .peek(dashboardSink::recordDailyAverage)
+                .mapValues(TemperatureAggregate::averageTemperatureCelsius)
+                .to(config.dailyAverageTopic(), Produced.with(Serdes.String(), Serdes.Double()));
+        }
 
-        KStream<String, NoaaObservation> rainDurationObservations = observations
-            .filter((key, observation) -> observation.isUsableForRainDurationAverages())
-            .filter((key, observation) -> observation.observationDate().getYear() == config.rainDurationYear());
+        if (config.runsPattern(StreamPattern.RAIN_DURATION)) {
+            KStream<String, NoaaObservation> rainDurationObservations = observations
+                .filter((key, observation) -> observation.isUsableForRainDurationAverages())
+                .filter((key, observation) -> observation.observationDate().getYear() == config.rainDurationYear());
 
-        yearlyAverageRainDurations(rainDurationObservations)
-            .toStream()
-            .peek(dashboardSink::recordYearlyRainDuration)
-            .mapValues(RainDurationAggregate::averageDurationHours)
-            .to(config.yearlyRainDurationTopic(), Produced.with(Serdes.String(), Serdes.Double()));
+            yearlyAverageRainDurations(rainDurationObservations)
+                .toStream()
+                .peek(dashboardSink::recordYearlyRainDuration)
+                .mapValues(RainDurationAggregate::averageDurationHours)
+                .to(config.yearlyRainDurationTopic(), Produced.with(Serdes.String(), Serdes.Double()));
+        }
 
         return builder.build();
     }
@@ -165,10 +176,36 @@ public final class NoaaWeatherStreamApp {
         return new PostgresDashboardSink(config.dashboardJdbcUrl(), config.dashboardDbUser(), config.dashboardDbPassword());
     }
 
+    public enum StreamPattern {
+        TEMPERATURE("temperature"),
+        RAIN_DURATION("rain-duration");
+
+        private final String configValue;
+
+        StreamPattern(String configValue) {
+            this.configValue = configValue;
+        }
+
+        public String configValue() {
+            return configValue;
+        }
+
+        static StreamPattern fromConfigValue(String value) {
+            String normalized = value.trim().toLowerCase().replace('_', '-');
+            return Arrays.stream(values())
+                .filter(pattern -> pattern.configValue.equals(normalized))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                    "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, all"
+                ));
+        }
+    }
+
     public record AppConfig(
         String bootstrapServers,
         String applicationId,
         List<String> inputTopics,
+        Set<StreamPattern> streamPatterns,
         String dailyAverageTopic,
         String yearlyRainDurationTopic,
         int rainDurationYear,
@@ -182,6 +219,7 @@ public final class NoaaWeatherStreamApp {
                 env("KAFKA_BOOTSTRAP_SERVERS", "localhost:19094"),
                 env("KAFKA_STREAMS_APPLICATION_ID", "noaa-weather-patterns"),
                 topics(env("KAFKA_INPUT_TOPICS", "noaa.weather.raw")),
+                streamPatterns(env("STREAM_PATTERN", "all")),
                 env("KAFKA_DAILY_AVERAGE_TOPIC", "noaa.weather.daily-average-temperature"),
                 env("KAFKA_YEARLY_RAIN_DURATION_TOPIC", "noaa.weather.yearly-average-rain-duration"),
                 envInt("RAIN_DURATION_YEAR", 2025),
@@ -190,6 +228,10 @@ public final class NoaaWeatherStreamApp {
                 env("DASHBOARD_DB_USER", "noaa"),
                 env("DASHBOARD_DB_PASSWORD", "noaa")
             );
+        }
+
+        public boolean runsPattern(StreamPattern pattern) {
+            return streamPatterns.contains(pattern);
         }
 
         private static String env(String name, String defaultValue) {
@@ -210,6 +252,24 @@ public final class NoaaWeatherStreamApp {
                 return defaultValue;
             }
             return Boolean.parseBoolean(value);
+        }
+
+        private static Set<StreamPattern> streamPatterns(String value) {
+            if (value == null || value.isBlank() || value.equalsIgnoreCase("all")) {
+                return EnumSet.allOf(StreamPattern.class);
+            }
+
+            EnumSet<StreamPattern> patterns = EnumSet.noneOf(StreamPattern.class);
+            Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(pattern -> !pattern.isEmpty())
+                .map(StreamPattern::fromConfigValue)
+                .forEach(patterns::add);
+
+            if (patterns.isEmpty()) {
+                return EnumSet.allOf(StreamPattern.class);
+            }
+            return patterns;
         }
 
         private static int envInt(String name, int defaultValue) {

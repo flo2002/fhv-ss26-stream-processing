@@ -23,6 +23,7 @@ Questions:
 
 ## Run the Starter Container
 ```powershell
+$env:STREAM_PATTERN='temperature,rain-duration'
 docker compose up --build -d
 ```
 
@@ -47,6 +48,10 @@ mvn exec:java
 ```
 
 For a fresh `KAFKA_STREAMS_APPLICATION_ID`, the stream starts at the beginning of the topic so it can process the already-produced 2025 historical data. So, every time the Java application is started, the full data from Kafka is reprocessed.
+
+## Learnings during development
+- When running multiple patterns at once, the disk usage and sometimes CPU usage is quite high. So, a parameter for running only a specific pattern was added.
+
 
 ## Grafana Dashboard
 The Compose setup includes Postgres and Grafana for visual monitoring:
