@@ -16,11 +16,12 @@ public class PostgresDashboardSink implements DashboardSink {
     private final PreparedStatement upsertDailyAverage;
     private final PreparedStatement upsertYearlyRainDuration;
 
-    public PostgresDashboardSink(String jdbcUrl, String user, String password) {
+    public PostgresDashboardSink(String jdbcUrl, String user, String password, String stationHistoryUrl) {
         try {
             connection = connectWithRetry(jdbcUrl, user, password);
             connection.setAutoCommit(true);
             createTables();
+            StationMetadataLoader.loadInto(connection, stationHistoryUrl);
             incrementCounter = connection.prepareStatement("""
                 INSERT INTO noaa_stream_counts (kind, total, updated_at)
                 VALUES (?, 1, now())
@@ -134,6 +135,22 @@ public class PostgresDashboardSink implements DashboardSink {
                 CREATE TABLE IF NOT EXISTS noaa_stream_counts (
                     kind text PRIMARY KEY,
                     total bigint NOT NULL DEFAULT 0,
+                    updated_at timestamptz NOT NULL DEFAULT now()
+                )
+                """);
+            statement.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS noaa_station_metadata (
+                    station_id text PRIMARY KEY,
+                    station_location text,
+                    station_name text,
+                    country_code text,
+                    state_code text,
+                    icao_code text,
+                    latitude double precision,
+                    longitude double precision,
+                    elevation_meters double precision,
+                    period_begin text,
+                    period_end text,
                     updated_at timestamptz NOT NULL DEFAULT now()
                 )
                 """);

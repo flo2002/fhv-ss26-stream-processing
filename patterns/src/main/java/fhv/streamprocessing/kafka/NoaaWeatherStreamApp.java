@@ -2,6 +2,7 @@ package fhv.streamprocessing.kafka;
 
 import fhv.streamprocessing.dashboard.DashboardSink;
 import fhv.streamprocessing.dashboard.PostgresDashboardSink;
+import fhv.streamprocessing.dashboard.StationMetadataLoader;
 import fhv.streamprocessing.model.NoaaObservation;
 import fhv.streamprocessing.model.RainDurationAggregate;
 import fhv.streamprocessing.model.TemperatureAggregate;
@@ -160,7 +161,12 @@ public final class NoaaWeatherStreamApp {
         if (!config.dashboardEnabled()) {
             return DashboardSink.noop();
         }
-        return new PostgresDashboardSink(config.dashboardJdbcUrl(), config.dashboardDbUser(), config.dashboardDbPassword());
+        return new PostgresDashboardSink(
+            config.dashboardJdbcUrl(),
+            config.dashboardDbUser(),
+            config.dashboardDbPassword(),
+            config.stationHistoryUrl()
+        );
     }
 
     public enum StreamPattern {
@@ -195,7 +201,8 @@ public final class NoaaWeatherStreamApp {
         boolean dashboardEnabled,
         String dashboardJdbcUrl,
         String dashboardDbUser,
-        String dashboardDbPassword
+        String dashboardDbPassword,
+        String stationHistoryUrl
     ) {
         public static AppConfig fromEnvironment() {
             return new AppConfig(
@@ -209,7 +216,8 @@ public final class NoaaWeatherStreamApp {
                 envBoolean("DASHBOARD_SINK_ENABLED", true),
                 env("DASHBOARD_JDBC_URL", "jdbc:postgresql://localhost:5432/noaa"),
                 env("DASHBOARD_DB_USER", "noaa"),
-                env("DASHBOARD_DB_PASSWORD", "noaa")
+                env("DASHBOARD_DB_PASSWORD", "noaa"),
+                env("NOAA_ISD_STATION_HISTORY_URL", StationMetadataLoader.DEFAULT_STATION_HISTORY_URL)
             );
         }
 

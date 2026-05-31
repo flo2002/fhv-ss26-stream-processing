@@ -312,7 +312,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  station_id,\n  sample_count AS rain_observations\nFROM noaa_yearly_station_rain_duration\nWHERE observation_year = 2025\nORDER BY sample_count DESC, station_id\nLIMIT 20;",
+          "rawSql": "SELECT\n  COALESCE(m.station_location || ' (' || r.station_id || ')', r.station_id) AS city,\n  r.sample_count AS rain_observations\nFROM noaa_yearly_station_rain_duration r\nLEFT JOIN noaa_station_metadata m ON m.station_id = r.station_id\nWHERE r.observation_year = 2025\nORDER BY r.sample_count DESC, r.station_id\nLIMIT 20;",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -397,7 +397,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  station_id,\n  observation_year,\n  avg_duration_hours,\n  sample_count,\n  updated_at\nFROM noaa_yearly_station_rain_duration\nWHERE observation_year = 2025\nORDER BY avg_duration_hours DESC, station_id\nLIMIT 100;",
+          "rawSql": "SELECT\n  COALESCE(m.station_location, r.station_id) AS city,\n  r.station_id,\n  r.observation_year,\n  r.avg_duration_hours,\n  r.sample_count,\n  r.updated_at\nFROM noaa_yearly_station_rain_duration r\nLEFT JOIN noaa_station_metadata m ON m.station_id = r.station_id\nWHERE r.observation_year = 2025\nORDER BY r.avg_duration_hours DESC, r.station_id\nLIMIT 100;",
           "refId": "A",
           "sql": {
             "columns": [],

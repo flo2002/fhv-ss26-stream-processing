@@ -314,7 +314,7 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT\n  observation_day::timestamp AS time,\n  station_id AS metric,\n  avg_temperature_celsius AS value\nFROM noaa_daily_station_average\nWHERE observation_day BETWEEN DATE '2025-01-01' AND DATE '2025-12-31'\nORDER BY observation_day, station_id;",
+          "rawSql": "SELECT\n  d.observation_day::timestamp AS time,\n  COALESCE(m.station_location || ' (' || d.station_id || ')', d.station_id) AS metric,\n  d.avg_temperature_celsius AS value\nFROM noaa_daily_station_average d\nLEFT JOIN noaa_station_metadata m ON m.station_id = d.station_id\nWHERE d.observation_day BETWEEN DATE '2025-01-01' AND DATE '2025-12-31'\nORDER BY d.observation_day, metric;",
           "refId": "A",
           "sql": {
             "columns": [],
@@ -325,6 +325,91 @@
       ],
       "title": "Daily Average Temperature Per Station",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "noaa-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "avg_temperature_celsius"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "celsius"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "id": 5,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "11.3.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "noaa-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT DISTINCT ON (d.station_id)\n  COALESCE(m.station_location, d.station_id) AS city,\n  d.station_id,\n  d.observation_day,\n  d.avg_temperature_celsius,\n  d.sample_count,\n  d.updated_at\nFROM noaa_daily_station_average d\nLEFT JOIN noaa_station_metadata m ON m.station_id = d.station_id\nWHERE d.observation_day BETWEEN DATE '2025-01-01' AND DATE '2025-12-31'\nORDER BY d.station_id, d.observation_day DESC\nLIMIT 100;",
+          "refId": "A",
+          "sql": {
+            "columns": [],
+            "groupBy": [],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Latest Daily Average Temperature By Station",
+      "type": "table"
     }
   ],
   "refresh": "10s",
