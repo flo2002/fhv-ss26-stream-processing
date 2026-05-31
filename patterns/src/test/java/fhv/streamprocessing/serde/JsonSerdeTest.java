@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import fhv.streamprocessing.model.NoaaObservation;
+import fhv.streamprocessing.model.RainDurationAggregate;
 import fhv.streamprocessing.model.TemperatureAggregate;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -18,6 +19,7 @@ class JsonSerdeTest {
             OffsetDateTime.parse("2025-03-27T11:00:00Z"),
             -6.5,
             "1",
+            null,
             "/pub/data/noaa/2025/010010-99999-2025.gz",
             751,
             "raw"
@@ -71,5 +73,20 @@ class JsonSerdeTest {
         assertEquals(6.0, decoded.getSum());
         assertEquals(3.0, decoded.averageTemperatureCelsius());
         assertEquals(-1, json.indexOf("averageTemperatureCelsius"));
+    }
+
+    @Test
+    void roundTripsRainDurationAggregateWithoutComputedAverageProperty() {
+        RainDurationAggregate aggregate = new RainDurationAggregate().add(6).add(12);
+        JsonSerde<RainDurationAggregate> serde = new JsonSerde<>(RainDurationAggregate.class);
+
+        byte[] bytes = serde.serializer().serialize("test", aggregate);
+        String json = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+        RainDurationAggregate decoded = serde.deserializer().deserialize("test", bytes);
+
+        assertEquals(2, decoded.getCount());
+        assertEquals(18, decoded.getTotalDurationHours());
+        assertEquals(9.0, decoded.averageDurationHours());
+        assertEquals(-1, json.indexOf("averageDurationHours"));
     }
 }

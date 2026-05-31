@@ -23,7 +23,7 @@ Questions:
 
 ## Run the Starter Container
 ```powershell
-docker compose up --build
+docker compose up --build -d
 ```
 
 The producer reads historical NOAA ISD station-year files for 2025 and writes JSON messages to Kafka topic `noaa.weather.raw`.
@@ -92,3 +92,10 @@ thoughts:
 - How to visualize the results? --> I created an optional Grafana dashboard. That also needs a postgres db for storing/caching the aggregated data.
 
 ![Pattern 1: Daily Average Temperature for Each Station](./assets/Screenshot%202026-05-29%20112959.png)
+
+## Pattern 5: compute average rain duration for 2025 (Florian)
+thoughts:
+- Similar to pattern 1, but I created a new topic `noaa.weather.rain` for the parsed rain duration data.
+- And there is a new Grafana dashboard for it:
+
+![Pattern 5: Average Rain Duration](./assets/)

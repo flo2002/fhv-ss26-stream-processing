@@ -14,7 +14,7 @@ public final class IsdRecordParser {
 
     public static NoaaObservation parse(String record, OffsetDateTime fallbackObservedAt, String sourcePath, long recordNumber) {
         if (record == null) {
-            return new NoaaObservation(null, null, fallbackObservedAt, null, null, sourcePath, recordNumber, null);
+            return new NoaaObservation(null, null, fallbackObservedAt, null, null, null, sourcePath, recordNumber, null);
         }
 
         OffsetDateTime observedAt = parseObservedAt(record, fallbackObservedAt);
@@ -24,6 +24,7 @@ public final class IsdRecordParser {
             observedAt,
             parseAirTemperatureCelsius(record),
             substringOrNull(record, 92, 93),
+            parseRainDurationHours(record),
             sourcePath,
             recordNumber,
             record
@@ -61,6 +62,35 @@ public final class IsdRecordParser {
 
         try {
             return Integer.parseInt(rawTemperature) / 10.0;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Integer parseRainDurationHours(String record) {
+        int precipitationIndex = record.indexOf("AA1");
+        if (precipitationIndex < 0) {
+            return null;
+        }
+
+        String periodQuantity = substringOrNull(record, precipitationIndex + 3, precipitationIndex + 5);
+        String depthDimension = substringOrNull(record, precipitationIndex + 5, precipitationIndex + 9);
+        String qualityCode = substringOrNull(record, precipitationIndex + 10, precipitationIndex + 11);
+        if (periodQuantity == null
+            || depthDimension == null
+            || periodQuantity.equals("99")
+            || depthDimension.equals("9999")
+            || qualityCode == null
+            || qualityCode.equals("9")) {
+            return null;
+        }
+
+        try {
+            int rainDepthTenthsMillimeter = Integer.parseInt(depthDimension);
+            if (rainDepthTenthsMillimeter <= 0) {
+                return null;
+            }
+            return Integer.parseInt(periodQuantity);
         } catch (NumberFormatException ignored) {
             return null;
         }

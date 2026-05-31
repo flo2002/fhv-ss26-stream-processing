@@ -10,6 +10,7 @@ public record NoaaObservation(
     OffsetDateTime observedAt,
     Double temperatureCelsius,
     String temperatureQualityCode,
+    Integer rainDurationHours,
     String sourcePath,
     long recordNumber,
     String rawPayload
@@ -24,7 +25,20 @@ public record NoaaObservation(
     }
 
     @JsonIgnore
+    public boolean isUsableForRainDurationAverages() {
+        return stationId != null
+            && observationDate != null
+            && rainDurationHours != null
+            && rainDurationHours > 0;
+    }
+
+    @JsonIgnore
     public String stationDayKey() {
         return stationId + "|" + observationDate;
+    }
+
+    @JsonIgnore
+    public String stationYearKey() {
+        return stationId + "|" + observationDate.getYear();
     }
 }

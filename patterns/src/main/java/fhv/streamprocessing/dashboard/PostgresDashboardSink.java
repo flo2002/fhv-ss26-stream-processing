@@ -1,5 +1,6 @@
 package fhv.streamprocessing.dashboard;
 
+import fhv.streamprocessing.model.RainDurationAggregate;
 import fhv.streamprocessing.model.TemperatureAggregate;
 import java.sql.Connection;
 import java.sql.Date;
@@ -13,6 +14,7 @@ public class PostgresDashboardSink implements DashboardSink {
     private final Connection connection;
     private final PreparedStatement incrementCounter;
     private final PreparedStatement upsertDailyAverage;
+    private final PreparedStatement upsertYearlyRainDuration;
 
     public PostgresDashboardSink(String jdbcUrl, String user, String password) {
         try {
@@ -37,6 +39,21 @@ public class PostgresDashboardSink implements DashboardSink {
                 ON CONFLICT (station_id, observation_day)
                 DO UPDATE SET
                     avg_temperature_celsius = excluded.avg_temperature_celsius,
+                    sample_count = excluded.sample_count,
+                    updated_at = excluded.updated_at
+                """);
+            upsertYearlyRainDuration = connection.prepareStatement("""
+                INSERT INTO noaa_yearly_station_rain_duration (
+                    station_id,
+                    observation_year,
+                    avg_duration_hours,
+                    sample_count,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (station_id, observation_year)
+                DO UPDATE SET
+                    avg_duration_hours = excluded.avg_duration_hours,
                     sample_count = excluded.sample_count,
                     updated_at = excluded.updated_at
                 """);
@@ -89,7 +106,23 @@ public class PostgresDashboardSink implements DashboardSink {
     }
 
     @Override
+    public synchronized void recordYearlyRainDuration(String stationYearKey, RainDurationAggregate aggregate) {
+        DashboardSink.StationYear stationYear = DashboardSink.stationYear(stationYearKey);
+        try {
+            upsertYearlyRainDuration.setString(1, stationYear.stationId());
+            upsertYearlyRainDuration.setInt(2, stationYear.year());
+            upsertYearlyRainDuration.setDouble(3, aggregate.averageDurationHours());
+            upsertYearlyRainDuration.setLong(4, aggregate.getCount());
+            upsertYearlyRainDuration.setTimestamp(5, Timestamp.from(OffsetDateTime.now().toInstant()));
+            upsertYearlyRainDuration.executeUpdate();
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not upsert yearly rain duration for " + stationYearKey, exception);
+        }
+    }
+
+    @Override
     public synchronized void close() {
+        closeQuietly(upsertYearlyRainDuration);
         closeQuietly(upsertDailyAverage);
         closeQuietly(incrementCounter);
         closeQuietly(connection);
@@ -117,6 +150,20 @@ public class PostgresDashboardSink implements DashboardSink {
             statement.executeUpdate("""
                 CREATE INDEX IF NOT EXISTS noaa_daily_station_average_day_idx
                 ON noaa_daily_station_average (observation_day)
+                """);
+            statement.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS noaa_yearly_station_rain_duration (
+                    station_id text NOT NULL,
+                    observation_year integer NOT NULL,
+                    avg_duration_hours double precision NOT NULL,
+                    sample_count bigint NOT NULL,
+                    updated_at timestamptz NOT NULL DEFAULT now(),
+                    PRIMARY KEY (station_id, observation_year)
+                )
+                """);
+            statement.executeUpdate("""
+                CREATE INDEX IF NOT EXISTS noaa_yearly_station_rain_duration_year_idx
+                ON noaa_yearly_station_rain_duration (observation_year)
                 """);
         }
     }

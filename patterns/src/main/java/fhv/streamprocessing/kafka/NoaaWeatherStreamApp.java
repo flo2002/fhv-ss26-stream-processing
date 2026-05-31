@@ -3,6 +3,7 @@ package fhv.streamprocessing.kafka;
 import fhv.streamprocessing.dashboard.DashboardSink;
 import fhv.streamprocessing.dashboard.PostgresDashboardSink;
 import fhv.streamprocessing.model.NoaaObservation;
+import fhv.streamprocessing.model.RainDurationAggregate;
 import fhv.streamprocessing.model.TemperatureAggregate;
 import fhv.streamprocessing.serde.JsonSerde;
 import java.time.Duration;
@@ -63,22 +64,36 @@ public final class NoaaWeatherStreamApp {
 
     public static Topology buildTopology(AppConfig config, DashboardSink dashboardSink) {
         StreamsBuilder builder = new StreamsBuilder();
-        KStream<String, NoaaObservation> observations = noaaObservationStream(builder, config.inputTopics(), dashboardSink);
+        KStream<String, NoaaObservation> observations = parsedNoaaObservationStream(builder, config.inputTopics(), dashboardSink);
 
         observations.peek((key, observation) -> System.out.printf(
-            "station=%s day=%s observedAt=%s tempC=%s sourceKey=%s%n",
+            "station=%s day=%s observedAt=%s tempC=%s rainDurationHours=%s sourceKey=%s%n",
             observation.stationId(),
             observation.observationDate(),
             observation.observedAt(),
             observation.temperatureCelsius(),
+            observation.rainDurationHours(),
             key
         ));
 
-        dailyAverageTemperatures(observations)
+        KStream<String, NoaaObservation> temperatureObservations = observations
+            .filter((key, observation) -> observation.isUsableForTemperatureAverages());
+
+        dailyAverageTemperatures(temperatureObservations)
             .toStream()
             .peek(dashboardSink::recordDailyAverage)
             .mapValues(TemperatureAggregate::averageTemperatureCelsius)
             .to(config.dailyAverageTopic(), Produced.with(Serdes.String(), Serdes.Double()));
+
+        KStream<String, NoaaObservation> rainDurationObservations = observations
+            .filter((key, observation) -> observation.isUsableForRainDurationAverages())
+            .filter((key, observation) -> observation.observationDate().getYear() == config.rainDurationYear());
+
+        yearlyAverageRainDurations(rainDurationObservations)
+            .toStream()
+            .peek(dashboardSink::recordYearlyRainDuration)
+            .mapValues(RainDurationAggregate::averageDurationHours)
+            .to(config.yearlyRainDurationTopic(), Produced.with(Serdes.String(), Serdes.Double()));
 
         return builder.build();
     }
@@ -92,11 +107,19 @@ public final class NoaaWeatherStreamApp {
         List<String> inputTopics,
         DashboardSink dashboardSink
     ) {
+        return parsedNoaaObservationStream(builder, inputTopics, dashboardSink)
+            .filter((key, observation) -> observation.isUsableForTemperatureAverages());
+    }
+
+    private static KStream<String, NoaaObservation> parsedNoaaObservationStream(
+        StreamsBuilder builder,
+        List<String> inputTopics,
+        DashboardSink dashboardSink
+    ) {
         return builder
             .stream(inputTopics, Consumed.with(Serdes.String(), new JsonSerde<>(NoaaKafkaMessage.class)))
             .peek((key, value) -> dashboardSink.incrementRawRequests())
             .mapValues(NoaaKafkaMessage::toObservation)
-            .filter((key, observation) -> observation.isUsableForTemperatureAverages())
             .peek((key, value) -> dashboardSink.incrementParsedRequests());
     }
 
@@ -109,6 +132,18 @@ public final class NoaaWeatherStreamApp {
             TemperatureAggregate::new,
             (stationDay, observation, aggregate) -> aggregate.add(observation.temperatureCelsius()),
             Materialized.with(Serdes.String(), new JsonSerde<>(TemperatureAggregate.class))
+        );
+    }
+
+    public static KTable<String, RainDurationAggregate> yearlyAverageRainDurations(KStream<String, NoaaObservation> observations) {
+        KGroupedStream<String, NoaaObservation> groupedByStationYear = observations
+            .map((key, observation) -> KeyValue.pair(observation.stationYearKey(), observation))
+            .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)));
+
+        return groupedByStationYear.aggregate(
+            RainDurationAggregate::new,
+            (stationYear, observation, aggregate) -> aggregate.add(observation.rainDurationHours()),
+            Materialized.with(Serdes.String(), new JsonSerde<>(RainDurationAggregate.class))
         );
     }
 
@@ -135,6 +170,8 @@ public final class NoaaWeatherStreamApp {
         String applicationId,
         List<String> inputTopics,
         String dailyAverageTopic,
+        String yearlyRainDurationTopic,
+        int rainDurationYear,
         boolean dashboardEnabled,
         String dashboardJdbcUrl,
         String dashboardDbUser,
@@ -146,6 +183,8 @@ public final class NoaaWeatherStreamApp {
                 env("KAFKA_STREAMS_APPLICATION_ID", "noaa-weather-patterns"),
                 topics(env("KAFKA_INPUT_TOPICS", "noaa.weather.raw")),
                 env("KAFKA_DAILY_AVERAGE_TOPIC", "noaa.weather.daily-average-temperature"),
+                env("KAFKA_YEARLY_RAIN_DURATION_TOPIC", "noaa.weather.yearly-average-rain-duration"),
+                envInt("RAIN_DURATION_YEAR", 2025),
                 envBoolean("DASHBOARD_SINK_ENABLED", true),
                 env("DASHBOARD_JDBC_URL", "jdbc:postgresql://localhost:5432/noaa"),
                 env("DASHBOARD_DB_USER", "noaa"),
@@ -171,6 +210,14 @@ public final class NoaaWeatherStreamApp {
                 return defaultValue;
             }
             return Boolean.parseBoolean(value);
+        }
+
+        private static int envInt(String name, int defaultValue) {
+            String value = System.getenv(name);
+            if (value == null || value.isBlank()) {
+                return defaultValue;
+            }
+            return Integer.parseInt(value);
         }
     }
 }
