@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 class IsdRecordParserTest {
     private static final String SAMPLE_RECORD = "0104010010999992025032711004+70939-008669FM-12+001099999V0200051N0104199999999999999999-00651-00941100111ADDAA199999999KA1120M-00631KA2120N-00681MA1999999099991MD1310031+9999OC101321OD199901121999REMSYN004BUFR";
     private static final String RAIN_RECORD = SAMPLE_RECORD.replace("AA199999999", "AA106001231");
+    private static final String SECOND_RAIN_GROUP_RECORD = SAMPLE_RECORD.replace("AA199999999", "AA199999999AA212001231");
 
     @Test
     void parsesStationTimestampAndTemperature() {
@@ -26,5 +27,12 @@ class IsdRecordParserTest {
 
         assertEquals(6, observation.rainDurationHours());
         assertEquals("010010-99999|2025", observation.stationYearKey());
+    }
+
+    @Test
+    void parsesRainDurationFromLaterLiquidPrecipitationGroup() {
+        NoaaObservation observation = IsdRecordParser.parse(SECOND_RAIN_GROUP_RECORD, null, "/pub/data/noaa/2025/010010-99999-2025.gz", 753);
+
+        assertEquals(12, observation.rainDurationHours());
     }
 }

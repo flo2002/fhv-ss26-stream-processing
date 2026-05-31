@@ -68,7 +68,18 @@ public final class IsdRecordParser {
     }
 
     private static Integer parseRainDurationHours(String record) {
-        int precipitationIndex = record.indexOf("AA1");
+        Integer rainDurationHours = null;
+        for (int precipitationGroup = 1; precipitationGroup <= 4; precipitationGroup++) {
+            rainDurationHours = parseRainDurationHours(record, "AA" + precipitationGroup);
+            if (rainDurationHours != null) {
+                break;
+            }
+        }
+        return rainDurationHours;
+    }
+
+    private static Integer parseRainDurationHours(String record, String precipitationGroup) {
+        int precipitationIndex = record.indexOf(precipitationGroup);
         if (precipitationIndex < 0) {
             return null;
         }

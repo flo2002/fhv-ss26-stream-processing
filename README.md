@@ -101,7 +101,13 @@ thoughts:
 
 ## Pattern 5: compute average rain duration for 2025 (Florian)
 thoughts:
-- Similar to pattern 1, but I created a new topic `noaa.weather.rain` for the parsed rain duration data.
+- Similar to pattern 1, but I created a new topic `noaa.weather.rain` for the parsed rain duration data that should be the processed output of the "raw" topic.
+- had to force recreate to only run one pattern at a time:
+```powershell
+$env:STREAM_PATTERN='rain-duration'
+docker compose up --build -d --force-recreate noaa-stream-client
+```
+
 - And there is a new Grafana dashboard for it:
 
 ![Pattern 5: Average Rain Duration](./assets/Screenshot%202026-05-31%20172712.png)

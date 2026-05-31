@@ -7,13 +7,19 @@ import fhv.streamprocessing.model.NoaaObservation;
 import fhv.streamprocessing.model.RainDurationAggregate;
 import fhv.streamprocessing.model.TemperatureAggregate;
 import fhv.streamprocessing.serde.JsonSerde;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
@@ -53,8 +59,9 @@ public final class NoaaWeatherStreamApp {
 
         streams.start();
         System.out.printf(
-            "NOAA Kafka stream started. bootstrap=%s topics=%s patterns=%s%n",
+            "NOAA Kafka stream started. bootstrap=%s applicationId=%s topics=%s patterns=%s%n",
             config.bootstrapServers(),
+            config.applicationId(),
             config.inputTopics(),
             config.streamPatterns()
         );
@@ -188,6 +195,10 @@ public final class NoaaWeatherStreamApp {
                     "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, all"
                 ));
         }
+
+        String configValue() {
+            return configValue;
+        }
     }
 
     public record AppConfig(
@@ -205,14 +216,21 @@ public final class NoaaWeatherStreamApp {
         String stationHistoryUrl
     ) {
         public static AppConfig fromEnvironment() {
+            String bootstrapServers = env("KAFKA_BOOTSTRAP_SERVERS", "localhost:19094");
+            List<String> inputTopics = topics(env("KAFKA_INPUT_TOPICS", "noaa.weather.raw"));
+            Set<StreamPattern> streamPatterns = streamPatterns(env("STREAM_PATTERN", "all"));
+            String dailyAverageTopic = env("KAFKA_DAILY_AVERAGE_TOPIC", "noaa.weather.daily-average-temperature");
+            String yearlyRainDurationTopic = env("KAFKA_YEARLY_RAIN_DURATION_TOPIC", "noaa.weather.yearly-average-rain-duration");
+            int rainDurationYear = envInt("RAIN_DURATION_YEAR", 2025);
+
             return new AppConfig(
-                env("KAFKA_BOOTSTRAP_SERVERS", "localhost:19094"),
-                env("KAFKA_STREAMS_APPLICATION_ID", "noaa-weather-patterns"),
-                topics(env("KAFKA_INPUT_TOPICS", "noaa.weather.raw")),
-                streamPatterns(env("STREAM_PATTERN", "all")),
-                env("KAFKA_DAILY_AVERAGE_TOPIC", "noaa.weather.daily-average-temperature"),
-                env("KAFKA_YEARLY_RAIN_DURATION_TOPIC", "noaa.weather.yearly-average-rain-duration"),
-                envInt("RAIN_DURATION_YEAR", 2025),
+                bootstrapServers,
+                applicationId(inputTopics, streamPatterns, dailyAverageTopic, yearlyRainDurationTopic, rainDurationYear),
+                inputTopics,
+                streamPatterns,
+                dailyAverageTopic,
+                yearlyRainDurationTopic,
+                rainDurationYear,
                 envBoolean("DASHBOARD_SINK_ENABLED", true),
                 env("DASHBOARD_JDBC_URL", "jdbc:postgresql://localhost:5432/noaa"),
                 env("DASHBOARD_DB_USER", "noaa"),
@@ -228,6 +246,94 @@ public final class NoaaWeatherStreamApp {
         private static String env(String name, String defaultValue) {
             String value = System.getenv(name);
             return value == null || value.isBlank() ? defaultValue : value;
+        }
+
+        private static String applicationId(
+            List<String> inputTopics,
+            Set<StreamPattern> streamPatterns,
+            String dailyAverageTopic,
+            String yearlyRainDurationTopic,
+            int rainDurationYear
+        ) {
+            String configuredApplicationId = env("KAFKA_STREAMS_APPLICATION_ID", "");
+            if (!configuredApplicationId.isBlank()) {
+                return configuredApplicationId;
+            }
+
+            String prefix = env("KAFKA_STREAMS_APPLICATION_ID_PREFIX", "noaa-weather");
+            return generatedApplicationId(prefix, inputTopics, streamPatterns, dailyAverageTopic, yearlyRainDurationTopic, rainDurationYear);
+        }
+
+        static String generatedApplicationId(
+            String prefix,
+            List<String> inputTopics,
+            Set<StreamPattern> streamPatterns,
+            String dailyAverageTopic,
+            String yearlyRainDurationTopic,
+            int rainDurationYear
+        ) {
+            String sourceTopics = inputTopics.stream()
+                .sorted()
+                .collect(Collectors.joining("-"));
+            String patternTopics = streamPatterns.stream()
+                .sorted(Comparator.comparing(StreamPattern::configValue))
+                .map(pattern -> patternReplayKey(pattern, dailyAverageTopic, yearlyRainDurationTopic, rainDurationYear))
+                .collect(Collectors.joining("-"));
+            String replayKey = sourceTopics + "-" + patternTopics;
+            String patternNames = streamPatterns.stream()
+                .sorted(Comparator.comparing(StreamPattern::configValue))
+                .map(StreamPattern::configValue)
+                .collect(Collectors.joining("-"));
+
+            return sanitizeApplicationId(prefix + "-" + patternNames + "-" + shortHash(replayKey));
+        }
+
+        private static String patternReplayKey(
+            StreamPattern pattern,
+            String dailyAverageTopic,
+            String yearlyRainDurationTopic,
+            int rainDurationYear
+        ) {
+            String key = pattern.configValue() + "-" + outputTopic(pattern, dailyAverageTopic, yearlyRainDurationTopic);
+            if (pattern == StreamPattern.RAIN_DURATION) {
+                return key + "-" + rainDurationYear;
+            }
+            return key;
+        }
+
+        private static String outputTopic(
+            StreamPattern pattern,
+            String dailyAverageTopic,
+            String yearlyRainDurationTopic
+        ) {
+            return switch (pattern) {
+                case TEMPERATURE -> dailyAverageTopic;
+                case RAIN_DURATION -> yearlyRainDurationTopic;
+            };
+        }
+
+        private static String sanitizeApplicationId(String value) {
+            String sanitized = value.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9._-]+", "-")
+                .replaceAll("-+", "-")
+                .replaceAll("(^[-.]+|[-.]+$)", "");
+            if (sanitized.isBlank()) {
+                return "noaa-weather-patterns";
+            }
+            return sanitized;
+        }
+
+        private static String shortHash(String value) {
+            try {
+                byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+                StringBuilder hash = new StringBuilder();
+                for (int index = 0; index < 4; index++) {
+                    hash.append(String.format("%02x", digest[index]));
+                }
+                return hash.toString();
+            } catch (NoSuchAlgorithmException exception) {
+                throw new IllegalStateException("SHA-256 is not available", exception);
+            }
         }
 
         private static List<String> topics(String value) {
