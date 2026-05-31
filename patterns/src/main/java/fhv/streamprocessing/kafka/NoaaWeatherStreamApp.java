@@ -109,19 +109,6 @@ public final class NoaaWeatherStreamApp {
         return builder.build();
     }
 
-    public static KStream<String, NoaaObservation> noaaObservationStream(StreamsBuilder builder, List<String> inputTopics) {
-        return noaaObservationStream(builder, inputTopics, DashboardSink.noop());
-    }
-
-    public static KStream<String, NoaaObservation> noaaObservationStream(
-        StreamsBuilder builder,
-        List<String> inputTopics,
-        DashboardSink dashboardSink
-    ) {
-        return parsedNoaaObservationStream(builder, inputTopics, dashboardSink)
-            .filter((key, observation) -> observation.isUsableForTemperatureAverages());
-    }
-
     private static KStream<String, NoaaObservation> parsedNoaaObservationStream(
         StreamsBuilder builder,
         List<String> inputTopics,
@@ -184,10 +171,6 @@ public final class NoaaWeatherStreamApp {
 
         StreamPattern(String configValue) {
             this.configValue = configValue;
-        }
-
-        public String configValue() {
-            return configValue;
         }
 
         static StreamPattern fromConfigValue(String value) {
