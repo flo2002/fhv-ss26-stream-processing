@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import fhv.streamprocessing.model.NoaaObservation;
+import fhv.streamprocessing.pattern10.blizzard.BlizzardDetectionTopology;
+import fhv.streamprocessing.pattern10.blizzard.BlizzardEvent;
+import fhv.streamprocessing.pattern10.blizzard.StationBlizzardWindowKey;
 import fhv.streamprocessing.pattern2.frostdays.MonthlyFrostDaysTopology;
 import fhv.streamprocessing.pattern6.temperatureranking.AnnualPeakTemperatureRankingTopology;
 import fhv.streamprocessing.pattern6.temperatureranking.RankingWindowKey;
@@ -179,36 +182,28 @@ class NoaaWeatherStreamAppTest {
 
     @Test
     void generatedApplicationIdChangesWhenTemperatureRankingTopicChanges() {
-        String original = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
-            "noaa-weather-dashboard",
-            List.of("noaa.weather.raw"),
+        String original = fullGeneratedApplicationId(
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.TEMPERATURE_RANKING),
-            "noaa.weather.daily-average-temperature",
-            "noaa.weather.yearly-average-rain-duration",
-            "noaa.weather.monthly-frost-days",
             "noaa.weather.daily-temperature-ranking",
-            2025,
-            2025,
+            "noaa.weather.blizzard-events",
             2025,
             24,
-            60,
-            10
+            1,
+            10,
+            0.0,
+            12.0
         );
 
-        String newPatternTopic = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
-            "noaa-weather-dashboard",
-            List.of("noaa.weather.raw"),
+        String newPatternTopic = fullGeneratedApplicationId(
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.TEMPERATURE_RANKING),
-            "noaa.weather.daily-average-temperature",
-            "noaa.weather.yearly-average-rain-duration",
-            "noaa.weather.monthly-frost-days",
             "noaa.weather.daily-temperature-ranking-v2",
-            2025,
-            2025,
+            "noaa.weather.blizzard-events",
             2025,
             24,
-            60,
-            10
+            1,
+            10,
+            0.0,
+            12.0
         );
 
         assertNotEquals(original, newPatternTopic);
@@ -216,20 +211,16 @@ class NoaaWeatherStreamAppTest {
 
     @Test
     void generatedApplicationIdChangesWhenTemperatureRankingYearChanges() {
-        String original = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
-            "noaa-weather-dashboard",
-            List.of("noaa.weather.raw"),
+        String original = fullGeneratedApplicationId(
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.TEMPERATURE_RANKING),
-            "noaa.weather.daily-average-temperature",
-            "noaa.weather.yearly-average-rain-duration",
-            "noaa.weather.monthly-frost-days",
             "noaa.weather.daily-temperature-ranking",
-            2025,
-            2025,
+            "noaa.weather.blizzard-events",
             2025,
             24,
-            60,
-            10
+            1,
+            10,
+            0.0,
+            12.0
         );
 
         String differentRankingYear = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
@@ -240,12 +231,19 @@ class NoaaWeatherStreamAppTest {
             "noaa.weather.yearly-average-rain-duration",
             "noaa.weather.monthly-frost-days",
             "noaa.weather.daily-temperature-ranking",
+            "noaa.weather.blizzard-events",
             2025,
             2025,
             2024,
             24,
             60,
-            10
+            10,
+            2025,
+            24,
+            1,
+            10,
+            0.0,
+            12.0
         );
 
         assertNotEquals(original, differentRankingYear);
@@ -253,20 +251,16 @@ class NoaaWeatherStreamAppTest {
 
     @Test
     void generatedApplicationIdStaysStableWhenUnusedTemperatureRankingWindowSettingsChange() {
-        String original = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
-            "noaa-weather-dashboard",
-            List.of("noaa.weather.raw"),
+        String original = fullGeneratedApplicationId(
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.TEMPERATURE_RANKING),
-            "noaa.weather.daily-average-temperature",
-            "noaa.weather.yearly-average-rain-duration",
-            "noaa.weather.monthly-frost-days",
             "noaa.weather.daily-temperature-ranking",
-            2025,
-            2025,
+            "noaa.weather.blizzard-events",
             2025,
             24,
-            60,
-            10
+            1,
+            10,
+            0.0,
+            12.0
         );
 
         String differentWindow = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
@@ -277,15 +271,51 @@ class NoaaWeatherStreamAppTest {
             "noaa.weather.yearly-average-rain-duration",
             "noaa.weather.monthly-frost-days",
             "noaa.weather.daily-temperature-ranking",
+            "noaa.weather.blizzard-events",
             2025,
             2025,
             2025,
             12,
             30,
-            5
+            5,
+            2025,
+            24,
+            1,
+            10,
+            0.0,
+            12.0
         );
 
         assertEquals(original, differentWindow);
+    }
+
+    @Test
+    void generatedApplicationIdChangesWhenBlizzardThresholdChanges() {
+        String original = fullGeneratedApplicationId(
+            EnumSet.of(NoaaWeatherStreamApp.StreamPattern.BLIZZARD),
+            "noaa.weather.daily-temperature-ranking",
+            "noaa.weather.blizzard-events",
+            2025,
+            24,
+            1,
+            10,
+            0.0,
+            12.0
+        );
+
+        String strongerWindThreshold = fullGeneratedApplicationId(
+            EnumSet.of(NoaaWeatherStreamApp.StreamPattern.BLIZZARD),
+            "noaa.weather.daily-temperature-ranking",
+            "noaa.weather.blizzard-events",
+            2025,
+            24,
+            1,
+            10,
+            0.0,
+            14.0
+        );
+
+        assertNotEquals(original, strongerWindThreshold);
     }
 
     @Test
@@ -384,6 +414,105 @@ class NoaaWeatherStreamAppTest {
         }
     }
 
+    @Test
+    void blizzardDetectionCombinesTemperatureWindAndPrecipitationWithinTheSameWindow() {
+        StreamsBuilder builder = new StreamsBuilder();
+        BlizzardDetectionTopology.build(
+            builder.stream("observations", Consumed.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class))),
+            2025,
+            0.0,
+            12.0,
+            24,
+            24,
+            10
+        )
+            .to("blizzard-events", Produced.with(Serdes.String(), new JsonSerde<>(BlizzardEvent.class)));
+
+        Properties properties = new Properties();
+        properties.put(StreamsConfig.APPLICATION_ID_CONFIG, "blizzard-detection-test");
+        properties.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "dummy:9092");
+
+        try (TopologyTestDriver driver = new TopologyTestDriver(builder.build(), properties)) {
+            TestInputTopic<String, NoaaObservation> inputTopic = driver.createInputTopic(
+                "observations",
+                new StringSerializer(),
+                new JsonSerde<>(NoaaObservation.class).serializer()
+            );
+            TestOutputTopic<String, BlizzardEvent> outputTopic = driver.createOutputTopic(
+                "blizzard-events",
+                new StringDeserializer(),
+                new JsonSerde<>(BlizzardEvent.class).deserializer()
+            );
+
+            inputTopic.pipeInput(
+                "record-1",
+                observation("010010-99999", LocalDateTime.of(2025, 1, 1, 1, 0), -4.0, null, null),
+                Instant.parse("2025-01-01T01:00:00Z")
+            );
+            inputTopic.pipeInput(
+                "record-2",
+                observation("010010-99999", LocalDateTime.of(2025, 1, 1, 5, 0), null, 13.2, null),
+                Instant.parse("2025-01-01T05:00:00Z")
+            );
+            inputTopic.pipeInput(
+                "record-3",
+                observation("010010-99999", LocalDateTime.of(2025, 1, 1, 6, 0), null, null, 3),
+                Instant.parse("2025-01-01T06:00:00Z")
+            );
+
+            var detectedEvents = outputTopic.readKeyValuesToList();
+            assertEquals(1, detectedEvents.size());
+
+            StationBlizzardWindowKey detectedKey = StationBlizzardWindowKey.parse(detectedEvents.get(0).key);
+            BlizzardEvent detectedEvent = detectedEvents.get(0).value;
+
+            assertEquals("010010-99999", detectedEvent.stationId());
+            assertEquals(0.0, detectedEvent.freezingThresholdCelsius());
+            assertEquals(12.0, detectedEvent.strongWindThresholdMetersPerSecond());
+            assertEquals(-4.0, detectedEvent.minTemperatureCelsius());
+            assertEquals(13.2, detectedEvent.maxWindSpeedMetersPerSecond());
+            assertEquals(1L, detectedEvent.precipitationObservationCount());
+            assertTrue(detectedEvent.isDetected());
+            assertEquals(Instant.parse("2025-01-01T00:00:00Z"), detectedKey.windowStart());
+            assertEquals(Instant.parse("2025-01-02T00:00:00Z"), detectedKey.windowEnd());
+        }
+    }
+
+    private static String fullGeneratedApplicationId(
+        EnumSet<NoaaWeatherStreamApp.StreamPattern> patterns,
+        String temperatureRankingTopic,
+        String blizzardTopic,
+        int blizzardYear,
+        int blizzardWindowHours,
+        int blizzardAdvanceHours,
+        int blizzardGraceMinutes,
+        double blizzardFreezingThresholdCelsius,
+        double blizzardWindThresholdMetersPerSecond
+    ) {
+        return NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+            "noaa-weather-dashboard",
+            List.of("noaa.weather.raw"),
+            patterns,
+            "noaa.weather.daily-average-temperature",
+            "noaa.weather.yearly-average-rain-duration",
+            "noaa.weather.monthly-frost-days",
+            temperatureRankingTopic,
+            blizzardTopic,
+            2025,
+            2025,
+            2025,
+            24,
+            60,
+            10,
+            blizzardYear,
+            blizzardWindowHours,
+            blizzardAdvanceHours,
+            blizzardGraceMinutes,
+            blizzardFreezingThresholdCelsius,
+            blizzardWindThresholdMetersPerSecond
+        );
+    }
+
     private static NoaaObservation observation(String stationId, LocalDate observationDate, double temperatureCelsius) {
         return new NoaaObservation(
             stationId,
@@ -391,6 +520,8 @@ class NoaaWeatherStreamAppTest {
             observationDate.atStartOfDay().atOffset(ZoneOffset.UTC),
             temperatureCelsius,
             "1",
+            null,
+            null,
             null,
             "/tmp/source",
             1L,
@@ -407,6 +538,31 @@ class NoaaWeatherStreamAppTest {
             temperatureCelsius,
             "1",
             null,
+            null,
+            null,
+            "/tmp/source",
+            1L,
+            "raw"
+        );
+    }
+
+    private static NoaaObservation observation(
+        String stationId,
+        LocalDateTime observedAt,
+        Double temperatureCelsius,
+        Double windSpeedMetersPerSecond,
+        Integer rainDurationHours
+    ) {
+        OffsetDateTime offsetDateTime = observedAt.atOffset(ZoneOffset.UTC);
+        return new NoaaObservation(
+            stationId,
+            observedAt.toLocalDate(),
+            offsetDateTime,
+            temperatureCelsius,
+            temperatureCelsius == null ? null : "1",
+            windSpeedMetersPerSecond,
+            windSpeedMetersPerSecond == null ? null : "1",
+            rainDurationHours,
             "/tmp/source",
             1L,
             "raw"

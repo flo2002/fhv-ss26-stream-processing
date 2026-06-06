@@ -14,7 +14,7 @@ public final class IsdRecordParser {
 
     public static NoaaObservation parse(String record, OffsetDateTime fallbackObservedAt, String sourcePath, long recordNumber) {
         if (record == null) {
-            return new NoaaObservation(null, null, fallbackObservedAt, null, null, null, sourcePath, recordNumber, null);
+            return new NoaaObservation(null, null, fallbackObservedAt, null, null, null, null, null, sourcePath, recordNumber, null);
         }
 
         OffsetDateTime observedAt = parseObservedAt(record, fallbackObservedAt);
@@ -24,6 +24,8 @@ public final class IsdRecordParser {
             observedAt,
             parseAirTemperatureCelsius(record),
             substringOrNull(record, 92, 93),
+            parseWindSpeedMetersPerSecond(record),
+            substringOrNull(record, 69, 70),
             parseRainDurationHours(record),
             sourcePath,
             recordNumber,
@@ -62,6 +64,20 @@ public final class IsdRecordParser {
 
         try {
             return Integer.parseInt(rawTemperature) / 10.0;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Double parseWindSpeedMetersPerSecond(String record) {
+        String rawWindSpeed = substringOrNull(record, 65, 69);
+        String qualityCode = substringOrNull(record, 69, 70);
+        if (rawWindSpeed == null || qualityCode == null || rawWindSpeed.equals("9999") || qualityCode.equals("9")) {
+            return null;
+        }
+
+        try {
+            return Integer.parseInt(rawWindSpeed) / 10.0;
         } catch (NumberFormatException ignored) {
             return null;
         }

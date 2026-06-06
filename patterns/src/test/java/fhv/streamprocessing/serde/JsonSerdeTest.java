@@ -18,6 +18,8 @@ class JsonSerdeTest {
             OffsetDateTime.parse("2025-03-27T11:00:00Z"),
             -6.5,
             "1",
+            10.4,
+            "1",
             null,
             "/pub/data/noaa/2025/010010-99999-2025.gz",
             751,

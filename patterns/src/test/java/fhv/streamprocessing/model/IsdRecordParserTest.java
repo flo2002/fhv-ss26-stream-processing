@@ -20,6 +20,8 @@ class IsdRecordParserTest {
         assertEquals(OffsetDateTime.parse("2025-03-27T11:00:00Z"), observation.observedAt());
         assertEquals(-6.5, observation.temperatureCelsius());
         assertEquals("1", observation.temperatureQualityCode());
+        assertEquals(10.4, observation.windSpeedMetersPerSecond());
+        assertEquals("1", observation.windSpeedQualityCode());
         assertEquals("010010-99999|2025-03-27", StationDayKey.fromObservation(observation).asKey());
     }
 

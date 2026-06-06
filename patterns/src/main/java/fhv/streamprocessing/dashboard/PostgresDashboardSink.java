@@ -2,6 +2,8 @@ package fhv.streamprocessing.dashboard;
 
 import fhv.streamprocessing.pattern1.temperature.DailyAverageTemperatureDashboardStore;
 import fhv.streamprocessing.pattern1.temperature.TemperatureAggregate;
+import fhv.streamprocessing.pattern10.blizzard.BlizzardDashboardStore;
+import fhv.streamprocessing.pattern10.blizzard.BlizzardEvent;
 import fhv.streamprocessing.pattern2.frostdays.MonthlyFrostDaysDashboardStore;
 import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
 import fhv.streamprocessing.pattern5.rainduration.YearlyRainDurationDashboardStore;
@@ -19,6 +21,7 @@ public class PostgresDashboardSink implements DashboardSink {
     private final YearlyRainDurationDashboardStore rainDurationStore;
     private final MonthlyFrostDaysDashboardStore frostDaysStore;
     private final AnnualPeakTemperatureRankingDashboardStore temperatureRankingStore;
+    private final BlizzardDashboardStore blizzardStore;
 
     public PostgresDashboardSink(String jdbcUrl, String user, String password, String stationHistoryUrl) {
         try {
@@ -31,7 +34,9 @@ public class PostgresDashboardSink implements DashboardSink {
             rainDurationStore = new YearlyRainDurationDashboardStore(connection);
             frostDaysStore = new MonthlyFrostDaysDashboardStore(connection);
             temperatureRankingStore = new AnnualPeakTemperatureRankingDashboardStore(connection);
+            blizzardStore = new BlizzardDashboardStore(connection);
             temperatureRankingStore.clearExistingRows();
+            blizzardStore.clearExistingRows();
 
             incrementCounter = connection.prepareStatement("""
                 INSERT INTO noaa_stream_counts (kind, total, updated_at)
@@ -109,7 +114,17 @@ public class PostgresDashboardSink implements DashboardSink {
     }
 
     @Override
+    public synchronized void recordBlizzardEvent(String stationWindowKey, BlizzardEvent event) {
+        try {
+            blizzardStore.record(stationWindowKey, event);
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not persist blizzard event for " + stationWindowKey, exception);
+        }
+    }
+
+    @Override
     public synchronized void close() {
+        closeQuietly(blizzardStore);
         closeQuietly(temperatureRankingStore);
         closeQuietly(frostDaysStore);
         closeQuietly(rainDurationStore);

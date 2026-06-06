@@ -1,6 +1,7 @@
 package fhv.streamprocessing.dashboard;
 
 import fhv.streamprocessing.pattern1.temperature.TemperatureAggregate;
+import fhv.streamprocessing.pattern10.blizzard.BlizzardEvent;
 import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
 import fhv.streamprocessing.pattern6.temperatureranking.TemperatureRankingAggregate;
 
@@ -16,6 +17,8 @@ public interface DashboardSink extends AutoCloseable {
     void recordMonthlyFrostDays(String stationMonthKey, Long frostDayCount);
 
     void recordTemperatureWindowRanking(String rankingWindowKey, TemperatureRankingAggregate aggregate);
+
+    void recordBlizzardEvent(String stationWindowKey, BlizzardEvent event);
 
     @Override
     void close();
@@ -44,6 +47,10 @@ public interface DashboardSink extends AutoCloseable {
 
             @Override
             public void recordTemperatureWindowRanking(String rankingWindowKey, TemperatureRankingAggregate aggregate) {
+            }
+
+            @Override
+            public void recordBlizzardEvent(String stationWindowKey, BlizzardEvent event) {
             }
 
             @Override

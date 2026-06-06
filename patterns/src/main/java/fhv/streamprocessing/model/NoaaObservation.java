@@ -9,6 +9,8 @@ public record NoaaObservation(
     OffsetDateTime observedAt,
     Double temperatureCelsius,
     String temperatureQualityCode,
+    Double windSpeedMetersPerSecond,
+    String windSpeedQualityCode,
     Integer rainDurationHours,
     String sourcePath,
     long recordNumber,
