@@ -2,6 +2,8 @@ package fhv.streamprocessing.dashboard;
 
 import fhv.streamprocessing.model.RainDurationAggregate;
 import fhv.streamprocessing.model.TemperatureAggregate;
+import fhv.streamprocessing.model.TemperatureRankingAggregate;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
 
@@ -15,6 +17,8 @@ public interface DashboardSink extends AutoCloseable {
     void recordYearlyRainDuration(String stationYearKey, RainDurationAggregate aggregate);
 
     void recordMonthlyFrostDays(String stationMonthKey, Long frostDayCount);
+
+    void recordTemperatureWindowRanking(String rankingWindowKey, TemperatureRankingAggregate aggregate);
 
     @Override
     void close();
@@ -39,6 +43,10 @@ public interface DashboardSink extends AutoCloseable {
 
             @Override
             public void recordMonthlyFrostDays(String stationMonthKey, Long frostDayCount) {
+            }
+
+            @Override
+            public void recordTemperatureWindowRanking(String rankingWindowKey, TemperatureRankingAggregate aggregate) {
             }
 
             @Override
@@ -78,5 +86,16 @@ public interface DashboardSink extends AutoCloseable {
     }
 
     record StationMonth(String stationId, YearMonth month) {
+    }
+
+    static RankingWindow rankingWindow(String key) {
+        String[] parts = key.split("\\|", 2);
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("Expected rankingWindowKey format startEpochMs|endEpochMs, got " + key);
+        }
+        return new RankingWindow(Instant.ofEpochMilli(Long.parseLong(parts[0])), Instant.ofEpochMilli(Long.parseLong(parts[1])));
+    }
+
+    record RankingWindow(Instant windowStart, Instant windowEnd) {
     }
 }

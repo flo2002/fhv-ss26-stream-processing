@@ -2,6 +2,7 @@ package fhv.streamprocessing.dashboard;
 
 import fhv.streamprocessing.model.RainDurationAggregate;
 import fhv.streamprocessing.model.TemperatureAggregate;
+import fhv.streamprocessing.model.TemperatureRankingAggregate;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.DriverManager;
@@ -16,6 +17,8 @@ public class PostgresDashboardSink implements DashboardSink {
     private final PreparedStatement upsertDailyAverage;
     private final PreparedStatement upsertYearlyRainDuration;
     private final PreparedStatement upsertMonthlyFrostDays;
+    private final PreparedStatement deleteTemperatureRankings;
+    private final PreparedStatement insertDailyTemperatureRanking;
 
     public PostgresDashboardSink(String jdbcUrl, String user, String password, String stationHistoryUrl) {
         try {
@@ -70,6 +73,34 @@ public class PostgresDashboardSink implements DashboardSink {
                 ON CONFLICT (station_id, observation_month)
                 DO UPDATE SET
                     frost_day_count = excluded.frost_day_count,
+                    updated_at = excluded.updated_at
+                """);
+            deleteTemperatureRankings = connection.prepareStatement("""
+                DELETE FROM noaa_temperature_window_ranking
+                """);
+            insertDailyTemperatureRanking = connection.prepareStatement("""
+                INSERT INTO noaa_temperature_window_ranking (
+                    window_start,
+                    window_end,
+                    ranking_type,
+                    rank_position,
+                    station_id,
+                    peak_temperature_celsius,
+                    avg_temperature_celsius,
+                    sample_count,
+                    min_temperature_celsius,
+                    max_temperature_celsius,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (window_start, window_end, ranking_type, rank_position)
+                DO UPDATE SET
+                    station_id = excluded.station_id,
+                    peak_temperature_celsius = excluded.peak_temperature_celsius,
+                    avg_temperature_celsius = excluded.avg_temperature_celsius,
+                    sample_count = excluded.sample_count,
+                    min_temperature_celsius = excluded.min_temperature_celsius,
+                    max_temperature_celsius = excluded.max_temperature_celsius,
                     updated_at = excluded.updated_at
                 """);
         } catch (SQLException exception) {
@@ -150,7 +181,25 @@ public class PostgresDashboardSink implements DashboardSink {
     }
 
     @Override
+    public synchronized void recordTemperatureWindowRanking(String rankingWindowKey, TemperatureRankingAggregate aggregate) {
+        try {
+            DashboardSink.RankingWindow rankingWindow = DashboardSink.rankingWindow(rankingWindowKey);
+            Timestamp windowStart = Timestamp.from(rankingWindow.windowStart());
+            Timestamp windowEnd = Timestamp.from(rankingWindow.windowEnd());
+            deleteTemperatureRankings.executeUpdate();
+
+            Timestamp updatedAt = Timestamp.from(OffsetDateTime.now().toInstant());
+            insertRankingRows(windowStart, windowEnd, "hot", aggregate.hottestStations(10), updatedAt);
+            insertRankingRows(windowStart, windowEnd, "cold", aggregate.coldestStations(10), updatedAt);
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not upsert temperature ranking window for " + rankingWindowKey, exception);
+        }
+    }
+
+    @Override
     public synchronized void close() {
+        closeQuietly(insertDailyTemperatureRanking);
+        closeQuietly(deleteTemperatureRankings);
         closeQuietly(upsertMonthlyFrostDays);
         closeQuietly(upsertYearlyRainDuration);
         closeQuietly(upsertDailyAverage);
@@ -224,6 +273,66 @@ public class PostgresDashboardSink implements DashboardSink {
                 CREATE INDEX IF NOT EXISTS noaa_monthly_station_frost_days_month_idx
                 ON noaa_monthly_station_frost_days (observation_month)
                 """);
+            statement.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS noaa_temperature_window_ranking (
+                    window_start timestamptz NOT NULL,
+                    window_end timestamptz NOT NULL,
+                    ranking_type text NOT NULL,
+                    rank_position integer NOT NULL,
+                    station_id text NOT NULL,
+                    peak_temperature_celsius double precision,
+                    avg_temperature_celsius double precision NOT NULL,
+                    sample_count bigint NOT NULL,
+                    min_temperature_celsius double precision NOT NULL,
+                    max_temperature_celsius double precision NOT NULL,
+                    updated_at timestamptz NOT NULL DEFAULT now(),
+                    PRIMARY KEY (window_start, window_end, ranking_type, rank_position)
+                )
+                """);
+            statement.executeUpdate("""
+                CREATE INDEX IF NOT EXISTS noaa_temperature_window_ranking_end_idx
+                ON noaa_temperature_window_ranking (window_end)
+                """);
+            statement.executeUpdate("""
+                ALTER TABLE noaa_temperature_window_ranking
+                ADD COLUMN IF NOT EXISTS peak_temperature_celsius double precision
+                """);
+            statement.executeUpdate("""
+                UPDATE noaa_temperature_window_ranking
+                SET peak_temperature_celsius = CASE
+                    WHEN ranking_type = 'hot' THEN max_temperature_celsius
+                    ELSE min_temperature_celsius
+                END
+                WHERE peak_temperature_celsius IS NULL
+                """);
+            statement.executeUpdate("DELETE FROM noaa_temperature_window_ranking");
+        }
+    }
+
+    private void insertRankingRows(
+        Timestamp windowStart,
+        Timestamp windowEnd,
+        String rankingType,
+        java.util.List<TemperatureRankingAggregate.RankedStation> stations,
+        Timestamp updatedAt
+    ) throws SQLException {
+        int rankPosition = 1;
+        for (TemperatureRankingAggregate.RankedStation station : stations) {
+            double peakTemperature = "hot".equals(rankingType)
+                ? station.maxTemperatureCelsius()
+                : station.minTemperatureCelsius();
+            insertDailyTemperatureRanking.setTimestamp(1, windowStart);
+            insertDailyTemperatureRanking.setTimestamp(2, windowEnd);
+            insertDailyTemperatureRanking.setString(3, rankingType);
+            insertDailyTemperatureRanking.setInt(4, rankPosition++);
+            insertDailyTemperatureRanking.setString(5, station.stationId());
+            insertDailyTemperatureRanking.setDouble(6, peakTemperature);
+            insertDailyTemperatureRanking.setDouble(7, station.averageTemperatureCelsius());
+            insertDailyTemperatureRanking.setLong(8, station.count());
+            insertDailyTemperatureRanking.setDouble(9, station.minTemperatureCelsius());
+            insertDailyTemperatureRanking.setDouble(10, station.maxTemperatureCelsius());
+            insertDailyTemperatureRanking.setTimestamp(11, updatedAt);
+            insertDailyTemperatureRanking.executeUpdate();
         }
     }
 

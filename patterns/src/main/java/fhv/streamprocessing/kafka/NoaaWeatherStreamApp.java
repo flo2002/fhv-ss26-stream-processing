@@ -5,13 +5,18 @@ import fhv.streamprocessing.dashboard.PostgresDashboardSink;
 import fhv.streamprocessing.dashboard.StationMetadataLoader;
 import fhv.streamprocessing.model.NoaaObservation;
 import fhv.streamprocessing.model.RainDurationAggregate;
+import fhv.streamprocessing.model.StationWindowTemperatureStats;
 import fhv.streamprocessing.model.TemperatureAggregate;
+import fhv.streamprocessing.model.TemperatureRankingAggregate;
+import fhv.streamprocessing.model.TemperatureWindowStats;
 import fhv.streamprocessing.serde.JsonSerde;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Comparator;
@@ -31,9 +36,9 @@ import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.Grouped;
 import org.apache.kafka.streams.kstream.KGroupedStream;
-import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.KGroupedTable;
+import org.apache.kafka.streams.kstream.KTable;
+import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.kstream.Produced;
 
@@ -82,6 +87,8 @@ public final class NoaaWeatherStreamApp {
     public static Topology buildTopology(AppConfig config, DashboardSink dashboardSink) {
         StreamsBuilder builder = new StreamsBuilder();
         KStream<String, NoaaObservation> observations = parsedNoaaObservationStream(builder, config.inputTopics(), dashboardSink);
+        KTable<String, TemperatureAggregate> dailyTemperatureAverages = null;
+        KStream<String, NoaaObservation> usableTemperatureObservations = null;
 
         observations.peek((key, observation) -> System.out.printf(
             "station=%s day=%s observedAt=%s tempC=%s rainDurationHours=%s sourceKey=%s%n",
@@ -93,15 +100,31 @@ public final class NoaaWeatherStreamApp {
             key
         ));
 
-        if (config.runsPattern(StreamPattern.TEMPERATURE)) {
-            KStream<String, NoaaObservation> temperatureObservations = observations
+        if (config.runsPattern(StreamPattern.TEMPERATURE) || config.runsPattern(StreamPattern.TEMPERATURE_RANKING)) {
+            usableTemperatureObservations = observations
                 .filter((key, observation) -> observation.isUsableForTemperatureAverages());
 
-            dailyAverageTemperatures(temperatureObservations)
+            if (config.runsPattern(StreamPattern.TEMPERATURE)) {
+                dailyTemperatureAverages = dailyAverageTemperatures(usableTemperatureObservations);
+            }
+        }
+
+        if (config.runsPattern(StreamPattern.TEMPERATURE) && dailyTemperatureAverages != null) {
+            dailyTemperatureAverages
                 .toStream()
                 .peek(dashboardSink::recordDailyAverage)
                 .mapValues(TemperatureAggregate::averageTemperatureCelsius)
                 .to(config.dailyAverageTopic(), Produced.with(Serdes.String(), Serdes.Double()));
+        }
+
+        if (config.runsPattern(StreamPattern.TEMPERATURE_RANKING) && usableTemperatureObservations != null) {
+            temperatureWindowRankings(
+                usableTemperatureObservations,
+                config.temperatureRankingYear()
+            )
+                .toStream()
+                .peek(dashboardSink::recordTemperatureWindowRanking)
+                .to(config.dailyTemperatureRankingTopic(), Produced.with(Serdes.String(), new JsonSerde<>(TemperatureRankingAggregate.class)));
         }
 
         if (config.runsPattern(StreamPattern.RAIN_DURATION)) {
@@ -137,7 +160,11 @@ public final class NoaaWeatherStreamApp {
         DashboardSink dashboardSink
     ) {
         return builder
-            .stream(inputTopics, Consumed.with(Serdes.String(), new JsonSerde<>(NoaaKafkaMessage.class)))
+            .stream(
+                inputTopics,
+                Consumed.with(Serdes.String(), new JsonSerde<>(NoaaKafkaMessage.class))
+                    .withTimestampExtractor(new NoaaObservedAtTimestampExtractor())
+            )
             .peek((key, value) -> dashboardSink.incrementRawRequests())
             .mapValues(NoaaKafkaMessage::toObservation)
             .peek((key, value) -> dashboardSink.incrementParsedRequests());
@@ -190,6 +217,62 @@ public final class NoaaWeatherStreamApp {
         );
     }
 
+    public static KTable<String, TemperatureRankingAggregate> temperatureWindowRankings(
+        KStream<String, NoaaObservation> observations,
+        int rankingYear
+    ) {
+        long windowStartEpochMs = rankingYearWindowStartEpochMs(rankingYear);
+        long windowEndEpochMs = rankingYearWindowEndEpochMs(rankingYear);
+
+        return observations
+            .filter((key, observation) -> observation.observedAt() != null)
+            .filter((key, observation) -> observation.observedAt().getYear() == rankingYear)
+            .selectKey((key, observation) -> observation.stationId())
+            .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)))
+            .aggregate(
+                TemperatureWindowStats::new,
+                (stationId, observation, aggregate) -> aggregate.add(observation),
+                Materialized.with(Serdes.String(), new JsonSerde<>(TemperatureWindowStats.class))
+            )
+            .toStream()
+            .map((stationId, stats) -> KeyValue.pair(
+                rankingWindowKey(windowStartEpochMs, windowEndEpochMs),
+                new StationWindowTemperatureStats(
+                    stationId,
+                    windowStartEpochMs,
+                    windowEndEpochMs,
+                    stats.getCount(),
+                    stats.getMinTemperatureCelsius(),
+                    stats.getMaxTemperatureCelsius(),
+                    stats.averageTemperatureCelsius()
+                )
+            ))
+            .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(StationWindowTemperatureStats.class)))
+            .aggregate(
+            TemperatureRankingAggregate::new,
+            (windowKey, stationStats, aggregate) -> aggregate.update(stationStats),
+            Materialized.with(Serdes.String(), new JsonSerde<>(TemperatureRankingAggregate.class))
+        );
+    }
+
+    private static long rankingYearWindowStartEpochMs(int rankingYear) {
+        return LocalDate.of(rankingYear, 1, 1)
+            .atStartOfDay()
+            .toInstant(ZoneOffset.UTC)
+            .toEpochMilli();
+    }
+
+    private static long rankingYearWindowEndEpochMs(int rankingYear) {
+        return LocalDate.of(rankingYear + 1, 1, 1)
+            .atStartOfDay()
+            .toInstant(ZoneOffset.UTC)
+            .toEpochMilli();
+    }
+
+    static String rankingWindowKey(long windowStartEpochMs, long windowEndEpochMs) {
+        return windowStartEpochMs + "|" + windowEndEpochMs;
+    }
+
     static String stationMonthKey(String stationDayKey) {
         DashboardSink.StationDay stationDay = DashboardSink.stationDay(stationDayKey);
         return stationDay.stationId() + "|" + YearMonth.from(stationDay.day());
@@ -221,7 +304,8 @@ public final class NoaaWeatherStreamApp {
     public enum StreamPattern {
         TEMPERATURE("temperature"),
         RAIN_DURATION("rain-duration"),
-        FROST_DAYS("frost-days");
+        FROST_DAYS("frost-days"),
+        TEMPERATURE_RANKING("temperature-ranking");
 
         private final String configValue;
 
@@ -235,7 +319,7 @@ public final class NoaaWeatherStreamApp {
                 .filter(pattern -> pattern.configValue.equals(normalized))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
-                    "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, frost-days, all"
+                    "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, frost-days, temperature-ranking, all"
                 ));
         }
 
@@ -252,8 +336,13 @@ public final class NoaaWeatherStreamApp {
         String dailyAverageTopic,
         String yearlyRainDurationTopic,
         String monthlyFrostDaysTopic,
+        String dailyTemperatureRankingTopic,
         int rainDurationYear,
         int frostCountYear,
+        int temperatureRankingYear,
+        int temperatureRankingWindowHours,
+        int temperatureRankingAdvanceMinutes,
+        int temperatureRankingGraceMinutes,
         boolean dashboardEnabled,
         String dashboardJdbcUrl,
         String dashboardDbUser,
@@ -267,8 +356,13 @@ public final class NoaaWeatherStreamApp {
             String dailyAverageTopic = env("KAFKA_DAILY_AVERAGE_TOPIC", "noaa.weather.daily-average-temperature");
             String yearlyRainDurationTopic = env("KAFKA_YEARLY_RAIN_DURATION_TOPIC", "noaa.weather.yearly-average-rain-duration");
             String monthlyFrostDaysTopic = env("KAFKA_MONTHLY_FROST_DAYS_TOPIC", "noaa.weather.monthly-frost-days");
+            String dailyTemperatureRankingTopic = env("KAFKA_DAILY_TEMPERATURE_RANKING_TOPIC", "noaa.weather.daily-temperature-ranking");
             int rainDurationYear = envInt("RAIN_DURATION_YEAR", 2025);
             int frostCountYear = envInt("FROST_COUNT_YEAR", 2025);
+            int temperatureRankingYear = envInt("TEMPERATURE_RANKING_YEAR", 2025);
+            int temperatureRankingWindowHours = envInt("TEMPERATURE_RANKING_WINDOW_HOURS", 24);
+            int temperatureRankingAdvanceMinutes = envInt("TEMPERATURE_RANKING_ADVANCE_MINUTES", 60);
+            int temperatureRankingGraceMinutes = envInt("TEMPERATURE_RANKING_GRACE_MINUTES", 10);
 
             return new AppConfig(
                 bootstrapServers,
@@ -278,16 +372,26 @@ public final class NoaaWeatherStreamApp {
                     dailyAverageTopic,
                     yearlyRainDurationTopic,
                     monthlyFrostDaysTopic,
+                    dailyTemperatureRankingTopic,
                     rainDurationYear,
-                    frostCountYear
+                    frostCountYear,
+                    temperatureRankingYear,
+                    temperatureRankingWindowHours,
+                    temperatureRankingAdvanceMinutes,
+                    temperatureRankingGraceMinutes
                 ),
                 inputTopics,
                 streamPatterns,
                 dailyAverageTopic,
                 yearlyRainDurationTopic,
                 monthlyFrostDaysTopic,
+                dailyTemperatureRankingTopic,
                 rainDurationYear,
                 frostCountYear,
+                temperatureRankingYear,
+                temperatureRankingWindowHours,
+                temperatureRankingAdvanceMinutes,
+                temperatureRankingGraceMinutes,
                 envBoolean("DASHBOARD_SINK_ENABLED", true),
                 env("DASHBOARD_JDBC_URL", "jdbc:postgresql://localhost:5432/noaa"),
                 env("DASHBOARD_DB_USER", "noaa"),
@@ -311,8 +415,13 @@ public final class NoaaWeatherStreamApp {
             String dailyAverageTopic,
             String yearlyRainDurationTopic,
             String monthlyFrostDaysTopic,
+            String dailyTemperatureRankingTopic,
             int rainDurationYear,
-            int frostCountYear
+            int frostCountYear,
+            int temperatureRankingYear,
+            int temperatureRankingWindowHours,
+            int temperatureRankingAdvanceMinutes,
+            int temperatureRankingGraceMinutes
         ) {
             String configuredApplicationId = env("KAFKA_STREAMS_APPLICATION_ID", "");
             if (!configuredApplicationId.isBlank()) {
@@ -327,8 +436,40 @@ public final class NoaaWeatherStreamApp {
                 dailyAverageTopic,
                 yearlyRainDurationTopic,
                 monthlyFrostDaysTopic,
+                dailyTemperatureRankingTopic,
                 rainDurationYear,
-                frostCountYear
+                frostCountYear,
+                temperatureRankingYear,
+                temperatureRankingWindowHours,
+                temperatureRankingAdvanceMinutes,
+                temperatureRankingGraceMinutes
+            );
+        }
+
+        static String generatedApplicationId(
+            String prefix,
+            List<String> inputTopics,
+            Set<StreamPattern> streamPatterns,
+            String dailyAverageTopic,
+            String yearlyRainDurationTopic,
+            String monthlyFrostDaysTopic,
+            int rainDurationYear,
+            int frostCountYear
+        ) {
+            return generatedApplicationId(
+                prefix,
+                inputTopics,
+                streamPatterns,
+                dailyAverageTopic,
+                yearlyRainDurationTopic,
+                monthlyFrostDaysTopic,
+                "noaa.weather.daily-temperature-ranking",
+                rainDurationYear,
+                frostCountYear,
+                2025,
+                24,
+                60,
+                10
             );
         }
 
@@ -347,8 +488,13 @@ public final class NoaaWeatherStreamApp {
                 dailyAverageTopic,
                 yearlyRainDurationTopic,
                 "noaa.weather.monthly-frost-days",
+                "noaa.weather.daily-temperature-ranking",
                 rainDurationYear,
-                2025
+                2025,
+                2025,
+                24,
+                60,
+                10
             );
         }
 
@@ -359,8 +505,13 @@ public final class NoaaWeatherStreamApp {
             String dailyAverageTopic,
             String yearlyRainDurationTopic,
             String monthlyFrostDaysTopic,
+            String dailyTemperatureRankingTopic,
             int rainDurationYear,
-            int frostCountYear
+            int frostCountYear,
+            int temperatureRankingYear,
+            int temperatureRankingWindowHours,
+            int temperatureRankingAdvanceMinutes,
+            int temperatureRankingGraceMinutes
         ) {
             String sourceTopics = inputTopics.stream()
                 .sorted()
@@ -372,8 +523,13 @@ public final class NoaaWeatherStreamApp {
                     dailyAverageTopic,
                     yearlyRainDurationTopic,
                     monthlyFrostDaysTopic,
+                    dailyTemperatureRankingTopic,
                     rainDurationYear,
-                    frostCountYear
+                    frostCountYear,
+                    temperatureRankingYear,
+                    temperatureRankingWindowHours,
+                    temperatureRankingAdvanceMinutes,
+                    temperatureRankingGraceMinutes
                 ))
                 .collect(Collectors.joining("-"));
             String replayKey = sourceTopics + "-" + patternTopics;
@@ -390,20 +546,29 @@ public final class NoaaWeatherStreamApp {
             String dailyAverageTopic,
             String yearlyRainDurationTopic,
             String monthlyFrostDaysTopic,
+            String dailyTemperatureRankingTopic,
             int rainDurationYear,
-            int frostCountYear
+            int frostCountYear,
+            int temperatureRankingYear,
+            int temperatureRankingWindowHours,
+            int temperatureRankingAdvanceMinutes,
+            int temperatureRankingGraceMinutes
         ) {
             String key = pattern.configValue() + "-" + outputTopic(
                 pattern,
                 dailyAverageTopic,
                 yearlyRainDurationTopic,
-                monthlyFrostDaysTopic
+                monthlyFrostDaysTopic,
+                dailyTemperatureRankingTopic
             );
             if (pattern == StreamPattern.RAIN_DURATION) {
                 return key + "-" + rainDurationYear;
             }
             if (pattern == StreamPattern.FROST_DAYS) {
                 return key + "-" + frostCountYear;
+            }
+            if (pattern == StreamPattern.TEMPERATURE_RANKING) {
+                return key + "-" + temperatureRankingYear + "-annual-peak-v2";
             }
             return key;
         }
@@ -412,12 +577,14 @@ public final class NoaaWeatherStreamApp {
             StreamPattern pattern,
             String dailyAverageTopic,
             String yearlyRainDurationTopic,
-            String monthlyFrostDaysTopic
+            String monthlyFrostDaysTopic,
+            String dailyTemperatureRankingTopic
         ) {
             return switch (pattern) {
                 case TEMPERATURE -> dailyAverageTopic;
                 case RAIN_DURATION -> yearlyRainDurationTopic;
                 case FROST_DAYS -> monthlyFrostDaysTopic;
+                case TEMPERATURE_RANKING -> dailyTemperatureRankingTopic;
             };
         }
 

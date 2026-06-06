@@ -124,3 +124,13 @@ docker compose up --build -d --force-recreate noaa-stream-client
 - And there is a new Grafana dashboard for it:
 
 ![Pattern 5: Average Rain Duration](./assets/Screenshot%202026-05-31%20172712.png)
+
+## Pattern 6: top 10 hottest and coldest stations in 2025 by peak temperature (Chris)
+thoughts:
+- Implemented as ordered summary statistics with a yearly 2025 window and Top-N ranking over station peak temperatures.
+- `hot` ranks stations by their highest measured temperature in 2025, `cold` ranks stations by their lowest measured temperature in 2025.
+- We used the full year as the window instead of the last 24 hours because our dataset is only historical 2025 NOAA data, not a live continuously growing stream. 
+- Dashboard: `NOAA Temperature Ranking 2025`
+$env:STREAM_PATTERN='temperature-ranking'
+docker compose up --build -d --force-recreate noaa-stream-client
+```
