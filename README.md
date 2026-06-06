@@ -105,12 +105,15 @@ thoughts:
 - To avoid overcounting, multiple frost measurements on the same station and day are counted only once, then aggregated per month.
 - Predicate-based count: count distinct frost days per station and month in 2025.
 - had to force recreate to only run one pattern at a time:
+- Grafana dashboard for it: `NOAA Frost Days 2025`
+
 ```powershell
 $env:STREAM_PATTERN='frost-days'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
 
-- And there is a new Grafana dashboard for it: `NOAA Frost Days 2025`
+![Pattern 2: Frost Stations](./assets/Screenshot%2026-06-06%191852.png)
+
 
 ## Pattern 5: compute average rain duration for 2025 (Florian)
 thoughts:
@@ -131,6 +134,12 @@ thoughts:
 - `hot` ranks stations by their highest measured temperature in 2025, `cold` ranks stations by their lowest measured temperature in 2025.
 - We used the full year as the window instead of the last 24 hours because our dataset is only historical 2025 NOAA data, not a live continuously growing stream. 
 - Dashboard: `NOAA Temperature Ranking 2025`
+```powershell
 $env:STREAM_PATTERN='temperature-ranking'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
+
+
+![Pattern 6: Temperature Ranking](./assets/Screenshot%2026-06-06%193219.png)
+
+![Pattern 6: Temperature Ranking 2](./assets/Screenshot%2026-06-06%193721.png)
