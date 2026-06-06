@@ -3,6 +3,7 @@ package fhv.streamprocessing.dashboard;
 import fhv.streamprocessing.model.RainDurationAggregate;
 import fhv.streamprocessing.model.TemperatureAggregate;
 import java.time.LocalDate;
+import java.time.YearMonth;
 
 public interface DashboardSink extends AutoCloseable {
     void incrementRawRequests();
@@ -12,6 +13,8 @@ public interface DashboardSink extends AutoCloseable {
     void recordDailyAverage(String stationDayKey, TemperatureAggregate aggregate);
 
     void recordYearlyRainDuration(String stationYearKey, RainDurationAggregate aggregate);
+
+    void recordMonthlyFrostDays(String stationMonthKey, Long frostDayCount);
 
     @Override
     void close();
@@ -32,6 +35,10 @@ public interface DashboardSink extends AutoCloseable {
 
             @Override
             public void recordYearlyRainDuration(String stationYearKey, RainDurationAggregate aggregate) {
+            }
+
+            @Override
+            public void recordMonthlyFrostDays(String stationMonthKey, Long frostDayCount) {
             }
 
             @Override
@@ -60,5 +67,16 @@ public interface DashboardSink extends AutoCloseable {
     }
 
     record StationYear(String stationId, int year) {
+    }
+
+    static StationMonth stationMonth(String key) {
+        String[] parts = key.split("\\|", 2);
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("Expected stationMonthKey format stationId|yyyy-MM, got " + key);
+        }
+        return new StationMonth(parts[0], YearMonth.parse(parts[1]));
+    }
+
+    record StationMonth(String stationId, YearMonth month) {
     }
 }

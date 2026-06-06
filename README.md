@@ -99,6 +99,19 @@ thoughts:
 ![Pattern 1: Daily Average Temperature for Each Station](./assets/Screenshot%202026-05-29%20112959.png)
 ![Pattern 1: Daily Average Temperature for Each Station - cont](./assets/Screenshot%202026-05-29%20131242.png)
 
+## Pattern 2: count frost days per station and month in 2025 (Chris)
+thoughts:
+- Similar to pattern 1, but instead of averaging values I count predicate hits with `temp < 0C`.
+- To avoid overcounting, multiple frost measurements on the same station and day are counted only once, then aggregated per month.
+- Predicate-based count: count distinct frost days per station and month in 2025.
+- had to force recreate to only run one pattern at a time:
+```powershell
+$env:STREAM_PATTERN='frost-days'
+docker compose up --build -d --force-recreate noaa-stream-client
+```
+
+- And there is a new Grafana dashboard for it: `NOAA Frost Days 2025`
+
 ## Pattern 5: compute average rain duration for 2025 (Florian)
 thoughts:
 - Similar to pattern 1, but I created a new topic `noaa.weather.rain` for the parsed rain duration data that should be the processed output of the "raw" topic.

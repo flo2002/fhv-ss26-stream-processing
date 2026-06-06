@@ -15,6 +15,7 @@ public class PostgresDashboardSink implements DashboardSink {
     private final PreparedStatement incrementCounter;
     private final PreparedStatement upsertDailyAverage;
     private final PreparedStatement upsertYearlyRainDuration;
+    private final PreparedStatement upsertMonthlyFrostDays;
 
     public PostgresDashboardSink(String jdbcUrl, String user, String password, String stationHistoryUrl) {
         try {
@@ -56,6 +57,19 @@ public class PostgresDashboardSink implements DashboardSink {
                 DO UPDATE SET
                     avg_duration_hours = excluded.avg_duration_hours,
                     sample_count = excluded.sample_count,
+                    updated_at = excluded.updated_at
+                """);
+            upsertMonthlyFrostDays = connection.prepareStatement("""
+                INSERT INTO noaa_monthly_station_frost_days (
+                    station_id,
+                    observation_month,
+                    frost_day_count,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT (station_id, observation_month)
+                DO UPDATE SET
+                    frost_day_count = excluded.frost_day_count,
                     updated_at = excluded.updated_at
                 """);
         } catch (SQLException exception) {
@@ -122,7 +136,22 @@ public class PostgresDashboardSink implements DashboardSink {
     }
 
     @Override
+    public synchronized void recordMonthlyFrostDays(String stationMonthKey, Long frostDayCount) {
+        DashboardSink.StationMonth stationMonth = DashboardSink.stationMonth(stationMonthKey);
+        try {
+            upsertMonthlyFrostDays.setString(1, stationMonth.stationId());
+            upsertMonthlyFrostDays.setDate(2, Date.valueOf(stationMonth.month().atDay(1)));
+            upsertMonthlyFrostDays.setLong(3, frostDayCount);
+            upsertMonthlyFrostDays.setTimestamp(4, Timestamp.from(OffsetDateTime.now().toInstant()));
+            upsertMonthlyFrostDays.executeUpdate();
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not upsert monthly frost days for " + stationMonthKey, exception);
+        }
+    }
+
+    @Override
     public synchronized void close() {
+        closeQuietly(upsertMonthlyFrostDays);
         closeQuietly(upsertYearlyRainDuration);
         closeQuietly(upsertDailyAverage);
         closeQuietly(incrementCounter);
@@ -181,6 +210,19 @@ public class PostgresDashboardSink implements DashboardSink {
             statement.executeUpdate("""
                 CREATE INDEX IF NOT EXISTS noaa_yearly_station_rain_duration_year_idx
                 ON noaa_yearly_station_rain_duration (observation_year)
+                """);
+            statement.executeUpdate("""
+                CREATE TABLE IF NOT EXISTS noaa_monthly_station_frost_days (
+                    station_id text NOT NULL,
+                    observation_month date NOT NULL,
+                    frost_day_count bigint NOT NULL,
+                    updated_at timestamptz NOT NULL DEFAULT now(),
+                    PRIMARY KEY (station_id, observation_month)
+                )
+                """);
+            statement.executeUpdate("""
+                CREATE INDEX IF NOT EXISTS noaa_monthly_station_frost_days_month_idx
+                ON noaa_monthly_station_frost_days (observation_month)
                 """);
         }
     }

@@ -39,6 +39,7 @@ services:
         /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:19092 --alter --entity-type topics --entity-name noaa.weather.raw --add-config retention.ms=-1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.daily-average-temperature --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.yearly-average-rain-duration --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.monthly-frost-days --partitions 1 --replication-factor 1
 
   noaa-producer:
     build: .
@@ -77,7 +78,9 @@ services:
       STREAM_PATTERN: ${STREAM_PATTERN:-all}
       KAFKA_DAILY_AVERAGE_TOPIC: noaa.weather.daily-average-temperature
       KAFKA_YEARLY_RAIN_DURATION_TOPIC: noaa.weather.yearly-average-rain-duration
+      KAFKA_MONTHLY_FROST_DAYS_TOPIC: noaa.weather.monthly-frost-days
       RAIN_DURATION_YEAR: "2025"
+      FROST_COUNT_YEAR: "2025"
       KAFKA_STREAMS_APPLICATION_ID_PREFIX: noaa-weather-dashboard
       DASHBOARD_SINK_ENABLED: "true"
       DASHBOARD_JDBC_URL: jdbc:postgresql://postgres:5432/noaa
