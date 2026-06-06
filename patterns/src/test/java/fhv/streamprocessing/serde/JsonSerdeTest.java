@@ -1,11 +1,10 @@
 package fhv.streamprocessing.serde;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import fhv.streamprocessing.model.NoaaObservation;
-import fhv.streamprocessing.model.RainDurationAggregate;
-import fhv.streamprocessing.model.TemperatureAggregate;
+import fhv.streamprocessing.pattern1.temperature.TemperatureAggregate;
+import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
@@ -31,8 +30,6 @@ class JsonSerdeTest {
         NoaaObservation decoded = serde.deserializer().deserialize("test", bytes);
 
         assertEquals(observation, decoded);
-        assertTrue(observation.isUsableForTemperatureAverages());
-        assertEquals("010010-99999|2025-03-27", observation.stationDayKey());
         assertEquals(-1, json.indexOf("usableForTemperatureAverages"));
         assertEquals(-1, json.indexOf("stationDayKey"));
     }
@@ -57,7 +54,6 @@ class JsonSerdeTest {
         NoaaObservation decoded = serde.deserializer().deserialize("test", json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         assertEquals("010010-99999", decoded.stationId());
-        assertTrue(decoded.isUsableForTemperatureAverages());
     }
 
     @Test

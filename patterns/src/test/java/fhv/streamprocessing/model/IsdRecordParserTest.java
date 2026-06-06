@@ -2,6 +2,8 @@ package fhv.streamprocessing.model;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import fhv.streamprocessing.pattern1.temperature.StationDayKey;
+import fhv.streamprocessing.pattern5.rainduration.StationYearKey;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
 
@@ -18,7 +20,7 @@ class IsdRecordParserTest {
         assertEquals(OffsetDateTime.parse("2025-03-27T11:00:00Z"), observation.observedAt());
         assertEquals(-6.5, observation.temperatureCelsius());
         assertEquals("1", observation.temperatureQualityCode());
-        assertEquals("010010-99999|2025-03-27", observation.stationDayKey());
+        assertEquals("010010-99999|2025-03-27", StationDayKey.fromObservation(observation).asKey());
     }
 
     @Test
@@ -26,7 +28,7 @@ class IsdRecordParserTest {
         NoaaObservation observation = IsdRecordParser.parse(RAIN_RECORD, null, "/pub/data/noaa/2025/010010-99999-2025.gz", 752);
 
         assertEquals(6, observation.rainDurationHours());
-        assertEquals("010010-99999|2025", observation.stationYearKey());
+        assertEquals("010010-99999|2025", StationYearKey.fromObservation(observation).asKey());
     }
 
     @Test

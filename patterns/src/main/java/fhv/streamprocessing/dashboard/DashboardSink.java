@@ -1,11 +1,8 @@
 package fhv.streamprocessing.dashboard;
 
-import fhv.streamprocessing.model.RainDurationAggregate;
-import fhv.streamprocessing.model.TemperatureAggregate;
-import fhv.streamprocessing.model.TemperatureRankingAggregate;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.YearMonth;
+import fhv.streamprocessing.pattern1.temperature.TemperatureAggregate;
+import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
+import fhv.streamprocessing.pattern6.temperatureranking.TemperatureRankingAggregate;
 
 public interface DashboardSink extends AutoCloseable {
     void incrementRawRequests();
@@ -53,49 +50,5 @@ public interface DashboardSink extends AutoCloseable {
             public void close() {
             }
         };
-    }
-
-    static StationDay stationDay(String key) {
-        String[] parts = key.split("\\|", 2);
-        if (parts.length != 2) {
-            throw new IllegalArgumentException("Expected stationDayKey format stationId|yyyy-MM-dd, got " + key);
-        }
-        return new StationDay(parts[0], LocalDate.parse(parts[1]));
-    }
-
-    record StationDay(String stationId, LocalDate day) {
-    }
-
-    static StationYear stationYear(String key) {
-        String[] parts = key.split("\\|", 2);
-        if (parts.length != 2) {
-            throw new IllegalArgumentException("Expected stationYearKey format stationId|yyyy, got " + key);
-        }
-        return new StationYear(parts[0], Integer.parseInt(parts[1]));
-    }
-
-    record StationYear(String stationId, int year) {
-    }
-
-    static StationMonth stationMonth(String key) {
-        String[] parts = key.split("\\|", 2);
-        if (parts.length != 2) {
-            throw new IllegalArgumentException("Expected stationMonthKey format stationId|yyyy-MM, got " + key);
-        }
-        return new StationMonth(parts[0], YearMonth.parse(parts[1]));
-    }
-
-    record StationMonth(String stationId, YearMonth month) {
-    }
-
-    static RankingWindow rankingWindow(String key) {
-        String[] parts = key.split("\\|", 2);
-        if (parts.length != 2) {
-            throw new IllegalArgumentException("Expected rankingWindowKey format startEpochMs|endEpochMs, got " + key);
-        }
-        return new RankingWindow(Instant.ofEpochMilli(Long.parseLong(parts[0])), Instant.ofEpochMilli(Long.parseLong(parts[1])));
-    }
-
-    record RankingWindow(Instant windowStart, Instant windowEnd) {
     }
 }

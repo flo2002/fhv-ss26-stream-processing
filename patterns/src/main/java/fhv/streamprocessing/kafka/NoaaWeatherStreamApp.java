@@ -4,22 +4,21 @@ import fhv.streamprocessing.dashboard.DashboardSink;
 import fhv.streamprocessing.dashboard.PostgresDashboardSink;
 import fhv.streamprocessing.dashboard.StationMetadataLoader;
 import fhv.streamprocessing.model.NoaaObservation;
-import fhv.streamprocessing.model.RainDurationAggregate;
-import fhv.streamprocessing.model.StationWindowTemperatureStats;
-import fhv.streamprocessing.model.TemperatureAggregate;
-import fhv.streamprocessing.model.TemperatureRankingAggregate;
-import fhv.streamprocessing.model.TemperatureWindowStats;
+import fhv.streamprocessing.pattern1.temperature.DailyAverageTemperatureTopology;
+import fhv.streamprocessing.pattern1.temperature.TemperatureAggregate;
+import fhv.streamprocessing.pattern2.frostdays.MonthlyFrostDaysTopology;
+import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
+import fhv.streamprocessing.pattern5.rainduration.YearlyRainDurationTopology;
+import fhv.streamprocessing.pattern6.temperatureranking.AnnualPeakTemperatureRankingTopology;
+import fhv.streamprocessing.pattern6.temperatureranking.TemperatureRankingAggregate;
 import fhv.streamprocessing.serde.JsonSerde;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
-import java.time.LocalDate;
-import java.time.YearMonth;
-import java.time.ZoneOffset;
 import java.util.Arrays;
-import java.util.EnumSet;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
@@ -29,17 +28,12 @@ import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KafkaStreams;
-import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.kstream.Consumed;
-import org.apache.kafka.streams.kstream.Grouped;
-import org.apache.kafka.streams.kstream.KGroupedStream;
-import org.apache.kafka.streams.kstream.KGroupedTable;
-import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Produced;
 
 public final class NoaaWeatherStreamApp {
@@ -87,8 +81,6 @@ public final class NoaaWeatherStreamApp {
     public static Topology buildTopology(AppConfig config, DashboardSink dashboardSink) {
         StreamsBuilder builder = new StreamsBuilder();
         KStream<String, NoaaObservation> observations = parsedNoaaObservationStream(builder, config.inputTopics(), dashboardSink);
-        KTable<String, TemperatureAggregate> dailyTemperatureAverages = null;
-        KStream<String, NoaaObservation> usableTemperatureObservations = null;
 
         observations.peek((key, observation) -> System.out.printf(
             "station=%s day=%s observedAt=%s tempC=%s rainDurationHours=%s sourceKey=%s%n",
@@ -100,16 +92,8 @@ public final class NoaaWeatherStreamApp {
             key
         ));
 
-        if (config.runsPattern(StreamPattern.TEMPERATURE) || config.runsPattern(StreamPattern.TEMPERATURE_RANKING)) {
-            usableTemperatureObservations = observations
-                .filter((key, observation) -> observation.isUsableForTemperatureAverages());
-
-            if (config.runsPattern(StreamPattern.TEMPERATURE)) {
-                dailyTemperatureAverages = dailyAverageTemperatures(usableTemperatureObservations);
-            }
-        }
-
-        if (config.runsPattern(StreamPattern.TEMPERATURE) && dailyTemperatureAverages != null) {
+        if (config.runsPattern(StreamPattern.TEMPERATURE)) {
+            KTable<String, TemperatureAggregate> dailyTemperatureAverages = DailyAverageTemperatureTopology.build(observations);
             dailyTemperatureAverages
                 .toStream()
                 .peek(dashboardSink::recordDailyAverage)
@@ -117,22 +101,15 @@ public final class NoaaWeatherStreamApp {
                 .to(config.dailyAverageTopic(), Produced.with(Serdes.String(), Serdes.Double()));
         }
 
-        if (config.runsPattern(StreamPattern.TEMPERATURE_RANKING) && usableTemperatureObservations != null) {
-            temperatureWindowRankings(
-                usableTemperatureObservations,
-                config.temperatureRankingYear()
-            )
+        if (config.runsPattern(StreamPattern.TEMPERATURE_RANKING)) {
+            AnnualPeakTemperatureRankingTopology.build(observations, config.temperatureRankingYear())
                 .toStream()
                 .peek(dashboardSink::recordTemperatureWindowRanking)
                 .to(config.dailyTemperatureRankingTopic(), Produced.with(Serdes.String(), new JsonSerde<>(TemperatureRankingAggregate.class)));
         }
 
         if (config.runsPattern(StreamPattern.RAIN_DURATION)) {
-            KStream<String, NoaaObservation> rainDurationObservations = observations
-                .filter((key, observation) -> observation.isUsableForRainDurationAverages())
-                .filter((key, observation) -> observation.observationDate().getYear() == config.rainDurationYear());
-
-            yearlyAverageRainDurations(rainDurationObservations)
+            YearlyRainDurationTopology.build(observations, config.rainDurationYear())
                 .toStream()
                 .peek(dashboardSink::recordYearlyRainDuration)
                 .mapValues(RainDurationAggregate::averageDurationHours)
@@ -140,12 +117,7 @@ public final class NoaaWeatherStreamApp {
         }
 
         if (config.runsPattern(StreamPattern.FROST_DAYS)) {
-            KStream<String, NoaaObservation> frostObservations = observations
-                .filter((key, observation) -> observation.isUsableForTemperatureAverages())
-                .filter((key, observation) -> observation.observationDate().getYear() == config.frostCountYear())
-                .filter((key, observation) -> observation.temperatureCelsius() < 0.0);
-
-            monthlyFrostDayCounts(frostObservations)
+            MonthlyFrostDaysTopology.build(observations, config.frostCountYear())
                 .toStream()
                 .peek(dashboardSink::recordMonthlyFrostDays)
                 .to(config.monthlyFrostDaysTopic(), Produced.with(Serdes.String(), Serdes.Long()));
@@ -168,114 +140,6 @@ public final class NoaaWeatherStreamApp {
             .peek((key, value) -> dashboardSink.incrementRawRequests())
             .mapValues(NoaaKafkaMessage::toObservation)
             .peek((key, value) -> dashboardSink.incrementParsedRequests());
-    }
-
-    public static KTable<String, TemperatureAggregate> dailyAverageTemperatures(KStream<String, NoaaObservation> observations) {
-        KGroupedStream<String, NoaaObservation> groupedByStationDay = observations
-            .map((key, observation) -> KeyValue.pair(observation.stationDayKey(), observation))
-            .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)));
-
-        return groupedByStationDay.aggregate(
-            TemperatureAggregate::new,
-            (stationDay, observation, aggregate) -> aggregate.add(observation.temperatureCelsius()),
-            Materialized.with(Serdes.String(), new JsonSerde<>(TemperatureAggregate.class))
-        );
-    }
-
-    public static KTable<String, RainDurationAggregate> yearlyAverageRainDurations(KStream<String, NoaaObservation> observations) {
-        KGroupedStream<String, NoaaObservation> groupedByStationYear = observations
-            .map((key, observation) -> KeyValue.pair(observation.stationYearKey(), observation))
-            .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)));
-
-        return groupedByStationYear.aggregate(
-            RainDurationAggregate::new,
-            (stationYear, observation, aggregate) -> aggregate.add(observation.rainDurationHours()),
-            Materialized.with(Serdes.String(), new JsonSerde<>(RainDurationAggregate.class))
-        );
-    }
-
-    public static KTable<String, Long> monthlyFrostDayCounts(KStream<String, NoaaObservation> observations) {
-        KTable<String, Long> frostObservationsPerStationDay = observations
-            .map((key, observation) -> KeyValue.pair(observation.stationDayKey(), observation))
-            .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)))
-            .count(Materialized.with(Serdes.String(), Serdes.Long()));
-
-        KGroupedTable<String, Long> groupedByStationMonth = frostObservationsPerStationDay
-            .groupBy(
-                (stationDayKey, frostObservations) -> KeyValue.pair(
-                    stationMonthKey(stationDayKey),
-                    frostObservations > 0 ? 1L : 0L
-                ),
-                Grouped.with(Serdes.String(), Serdes.Long())
-            );
-
-        return groupedByStationMonth.aggregate(
-            () -> 0L,
-            (stationMonth, newValue, aggregate) -> aggregate + newValue,
-            (stationMonth, oldValue, aggregate) -> aggregate - oldValue,
-            Materialized.with(Serdes.String(), Serdes.Long())
-        );
-    }
-
-    public static KTable<String, TemperatureRankingAggregate> temperatureWindowRankings(
-        KStream<String, NoaaObservation> observations,
-        int rankingYear
-    ) {
-        long windowStartEpochMs = rankingYearWindowStartEpochMs(rankingYear);
-        long windowEndEpochMs = rankingYearWindowEndEpochMs(rankingYear);
-
-        return observations
-            .filter((key, observation) -> observation.observedAt() != null)
-            .filter((key, observation) -> observation.observedAt().getYear() == rankingYear)
-            .selectKey((key, observation) -> observation.stationId())
-            .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)))
-            .aggregate(
-                TemperatureWindowStats::new,
-                (stationId, observation, aggregate) -> aggregate.add(observation),
-                Materialized.with(Serdes.String(), new JsonSerde<>(TemperatureWindowStats.class))
-            )
-            .toStream()
-            .map((stationId, stats) -> KeyValue.pair(
-                rankingWindowKey(windowStartEpochMs, windowEndEpochMs),
-                new StationWindowTemperatureStats(
-                    stationId,
-                    windowStartEpochMs,
-                    windowEndEpochMs,
-                    stats.getCount(),
-                    stats.getMinTemperatureCelsius(),
-                    stats.getMaxTemperatureCelsius(),
-                    stats.averageTemperatureCelsius()
-                )
-            ))
-            .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(StationWindowTemperatureStats.class)))
-            .aggregate(
-            TemperatureRankingAggregate::new,
-            (windowKey, stationStats, aggregate) -> aggregate.update(stationStats),
-            Materialized.with(Serdes.String(), new JsonSerde<>(TemperatureRankingAggregate.class))
-        );
-    }
-
-    private static long rankingYearWindowStartEpochMs(int rankingYear) {
-        return LocalDate.of(rankingYear, 1, 1)
-            .atStartOfDay()
-            .toInstant(ZoneOffset.UTC)
-            .toEpochMilli();
-    }
-
-    private static long rankingYearWindowEndEpochMs(int rankingYear) {
-        return LocalDate.of(rankingYear + 1, 1, 1)
-            .atStartOfDay()
-            .toInstant(ZoneOffset.UTC)
-            .toEpochMilli();
-    }
-
-    static String rankingWindowKey(long windowStartEpochMs, long windowEndEpochMs) {
-        return windowStartEpochMs + "|" + windowEndEpochMs;
-    }
-
-    static String stationMonthKey(String stationDayKey) {
-        DashboardSink.StationDay stationDay = DashboardSink.stationDay(stationDayKey);
-        return stationDay.stationId() + "|" + YearMonth.from(stationDay.day());
     }
 
     private static Properties streamsProperties(AppConfig config) {

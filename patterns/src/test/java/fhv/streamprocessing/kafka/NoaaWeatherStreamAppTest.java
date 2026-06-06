@@ -5,7 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import fhv.streamprocessing.model.NoaaObservation;
-import fhv.streamprocessing.model.TemperatureRankingAggregate;
+import fhv.streamprocessing.pattern2.frostdays.MonthlyFrostDaysTopology;
+import fhv.streamprocessing.pattern6.temperatureranking.AnnualPeakTemperatureRankingTopology;
+import fhv.streamprocessing.pattern6.temperatureranking.RankingWindowKey;
+import fhv.streamprocessing.pattern6.temperatureranking.TemperatureRankingAggregate;
 import fhv.streamprocessing.serde.JsonSerde;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -288,8 +291,9 @@ class NoaaWeatherStreamAppTest {
     @Test
     void monthlyFrostDayCountsCountDistinctDaysPerStationMonth() {
         StreamsBuilder builder = new StreamsBuilder();
-        NoaaWeatherStreamApp.monthlyFrostDayCounts(
-            builder.stream("observations", Consumed.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)))
+        MonthlyFrostDaysTopology.build(
+            builder.stream("observations", Consumed.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class))),
+            2025
         )
             .toStream()
             .to("monthly-frost-days", Produced.with(Serdes.String(), Serdes.Long()));
@@ -328,7 +332,7 @@ class NoaaWeatherStreamAppTest {
     @Test
     void temperatureWindowRankingsTrackHottestAndColdestStationsForAnnualPeakWindow() {
         StreamsBuilder builder = new StreamsBuilder();
-        NoaaWeatherStreamApp.temperatureWindowRankings(
+        AnnualPeakTemperatureRankingTopology.build(
             builder.stream("observations", Consumed.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class))),
             2025
         )
@@ -360,10 +364,10 @@ class NoaaWeatherStreamAppTest {
             Map<String, TemperatureRankingAggregate> latestRankings = new LinkedHashMap<>();
             outputTopic.readKeyValuesToList().forEach(record -> latestRankings.put(record.key, record.value));
 
-            String annualWindowKey = NoaaWeatherStreamApp.rankingWindowKey(
+            String annualWindowKey = new RankingWindowKey(
                 Instant.parse("2025-01-01T00:00:00Z").toEpochMilli(),
                 Instant.parse("2026-01-01T00:00:00Z").toEpochMilli()
-            );
+            ).asKey();
             TemperatureRankingAggregate ranking = latestRankings.get(annualWindowKey);
 
             assertEquals("010010-99999", ranking.hottestStations(3).get(0).stationId());
@@ -372,10 +376,10 @@ class NoaaWeatherStreamAppTest {
             assertEquals(-2.0, ranking.coldestStations(3).get(0).minTemperatureCelsius());
             assertEquals(3, ranking.getStationsById().size());
 
-            String previousYearWindowKey = NoaaWeatherStreamApp.rankingWindowKey(
+            String previousYearWindowKey = new RankingWindowKey(
                 Instant.parse("2024-12-31T23:00:00Z").toEpochMilli(),
                 Instant.parse("2025-01-01T01:00:00Z").toEpochMilli()
-            );
+            ).asKey();
             assertTrue(!latestRankings.containsKey(previousYearWindowKey));
         }
     }

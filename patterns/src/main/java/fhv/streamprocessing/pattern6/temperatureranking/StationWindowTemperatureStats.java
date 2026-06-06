@@ -1,4 +1,4 @@
-package fhv.streamprocessing.model;
+package fhv.streamprocessing.pattern6.temperatureranking;
 
 public class StationWindowTemperatureStats {
     private String stationId;

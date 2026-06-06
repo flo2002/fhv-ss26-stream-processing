@@ -1,4 +1,4 @@
-package fhv.streamprocessing.model;
+package fhv.streamprocessing.pattern5.rainduration;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
@@ -10,10 +10,8 @@ public class RainDurationAggregate {
     }
 
     public RainDurationAggregate add(Integer durationHours) {
-        if (durationHours != null) {
-            count++;
-            totalDurationHours += durationHours;
-        }
+        count++;
+        totalDurationHours += durationHours;
         return this;
     }
 
@@ -21,12 +19,12 @@ public class RainDurationAggregate {
         return count;
     }
 
-    public long getTotalDurationHours() {
-        return totalDurationHours;
-    }
-
     public void setCount(long count) {
         this.count = count;
+    }
+
+    public long getTotalDurationHours() {
+        return totalDurationHours;
     }
 
     public void setTotalDurationHours(long totalDurationHours) {
@@ -34,7 +32,7 @@ public class RainDurationAggregate {
     }
 
     @JsonIgnore
-    public Double averageDurationHours() {
-        return count == 0 ? null : (double) totalDurationHours / count;
+    public double averageDurationHours() {
+        return count == 0 ? 0.0 : (double) totalDurationHours / count;
     }
 }

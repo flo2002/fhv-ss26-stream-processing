@@ -1,4 +1,4 @@
-package fhv.streamprocessing.model;
+package fhv.streamprocessing.pattern6.temperatureranking;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -9,7 +9,7 @@ import java.util.Map;
 public class TemperatureRankingAggregate {
     private long windowStartEpochMs;
     private long windowEndEpochMs;
-    private String rankingType = "HOTTEST_AND_COLDEST_BY_AVG_TEMPERATURE";
+    private String rankingType = "HOTTEST_AND_COLDEST_BY_PEAK_TEMPERATURE";
     private List<RankedStation> hottest = new ArrayList<>();
     private List<RankedStation> coldest = new ArrayList<>();
     private Map<String, RankedStation> stationsById = new LinkedHashMap<>();
