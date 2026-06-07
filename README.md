@@ -114,6 +114,17 @@ docker compose up --build -d --force-recreate noaa-stream-client
 
 ![Pattern 2: Frost Stations](./assets/Screenshot%2026-06-06%191852.png)
 
+## Pattern 3: rapid temperature change detection (Haroldas)
+thoughts:
+- Implemented as summary statistics on time-dependent functions over a sliding window.
+- Calculates the rate of temperature change (°C/h) between consecutive readings for each station.
+- Aggregates these rates over a window (default 24h) to find the minimum, maximum, and average rate of change.
+- Useful for detecting sudden warming or cooling events that could indicate passing weather fronts.
+- Dashboard: `NOAA Rapid Temperature Change 2025`
+```powershell
+$env:STREAM_PATTERN='rapid-temperature-change'
+docker compose up --build -d --force-recreate noaa-stream-client
+```
 
 ## Pattern 5: compute average rain duration for 2025 (Florian)
 thoughts:
@@ -144,6 +155,17 @@ docker compose up --build -d --force-recreate noaa-stream-client
 
 ![Pattern 6: Temperature Ranking 2](./assets/Screenshot%2026-06-06%193721.png)
 
+## Pattern 7: temperature trend forecasting (Haroldas)
+thoughts:
+- Implemented as simple forecasting using linear regression over a sliding window.
+- Calculates the temperature trend (slope) for each station based on historical values in a 30-day window.
+- Generates a 24-hour forecast by projecting the current trend forward.
+- Useful for real-time climate change trend monitoring and short-term temperature prediction.
+- Dashboard: `NOAA Temperature Forecast 2025`
+```powershell
+$env:STREAM_PATTERN='temperature-forecast'
+docker compose up --build -d --force-recreate noaa-stream-client
+```
 
 
 ## Pattern 10: blizzard detection (Chris)
@@ -157,14 +179,3 @@ docker compose up --build -d --force-recreate noaa-stream-client
 
 ![Pattern 10: Blizzard](./assets/Screenshot%2026-06-06%195120.png)
 
-## Pattern 3: rapid temperature change detection (Haroldas)
-thoughts:
-- Implemented as summary statistics on time-dependent functions over a sliding window.
-- Calculates the rate of temperature change (°C/h) between consecutive readings for each station.
-- Aggregates these rates over a window (default 24h) to find the minimum, maximum, and average rate of change.
-- Useful for detecting sudden warming or cooling events that could indicate passing weather fronts.
-- Dashboard: `NOAA Rapid Temperature Change 2025`
-```powershell
-$env:STREAM_PATTERN='rapid-temperature-change'
-docker compose up --build -d --force-recreate noaa-stream-client
-```

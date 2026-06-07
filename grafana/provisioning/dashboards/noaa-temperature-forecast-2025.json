@@ -48,7 +48,7 @@
       },
       "gridPos": {
         "h": 5,
-        "w": 8,
+        "w": 12,
         "x": 0,
         "y": 0
       },
@@ -79,16 +79,11 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT count(*) AS event_count\nFROM noaa_rapid_temperature_change\nWHERE window_start >= '2025-01-01' AND window_end <= '2026-01-01';",
-          "refId": "A",
-          "sql": {
-            "columns": [],
-            "groupBy": [],
-            "limit": 50
-          }
+          "rawSql": "SELECT count(*) AS forecast_count\nFROM noaa_temperature_forecast\nWHERE window_end >= '2025-01-01' AND window_end <= '2026-01-01';",
+          "refId": "A"
         }
       ],
-      "title": "Total Analysis Windows",
+      "title": "Total Forecasts Generated",
       "type": "stat"
     },
     {
@@ -111,14 +106,14 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "celsius"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 5,
-        "w": 8,
-        "x": 8,
+        "w": 12,
+        "x": 12,
         "y": 0
       },
       "id": 2,
@@ -148,85 +143,11 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COALESCE(max(max_rate_of_change), 0) AS max_heating_rate\nFROM noaa_rapid_temperature_change\nWHERE window_start >= '2025-01-01' AND window_end <= '2026-01-01';",
-          "refId": "A",
-          "sql": {
-            "columns": [],
-            "groupBy": [],
-            "limit": 50
-          }
+          "rawSql": "SELECT COALESCE(max(forecast_next_24h), 0) AS max_forecast\nFROM noaa_temperature_forecast\nWHERE window_end >= '2025-01-01' AND window_end <= '2026-01-01';",
+          "refId": "A"
         }
       ],
-      "title": "Peak Heating Rate (°C/h)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "postgres",
-        "uid": "noaa-postgres"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "blue",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 16,
-        "y": 0
-      },
-      "id": 3,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "11.3.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "postgres",
-            "uid": "noaa-postgres"
-          },
-          "editorMode": "code",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT COALESCE(min(min_rate_of_change), 0) AS max_cooling_rate\nFROM noaa_rapid_temperature_change\nWHERE window_start >= '2025-01-01' AND window_end <= '2026-01-01';",
-          "refId": "A",
-          "sql": {
-            "columns": [],
-            "groupBy": [],
-            "limit": 50
-          }
-        }
-      ],
-      "title": "Peak Cooling Rate (°C/h)",
+      "title": "Highest Forecasted Temperature",
       "type": "stat"
     },
     {
@@ -241,9 +162,9 @@
           },
           "custom": {
             "axisBorderShow": false,
-            "axisCenteredZero": true,
+            "axisCenteredZero": false,
             "axisColorMode": "text",
-            "axisLabel": "Rate of Change (°C/h)",
+            "axisLabel": "Forecast Next 24h (°C)",
             "axisPlacement": "auto",
             "fillOpacity": 25,
             "gradientMode": "none",
@@ -271,7 +192,7 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "celsius"
         },
         "overrides": []
       },
@@ -281,7 +202,7 @@
         "x": 0,
         "y": 5
       },
-      "id": 4,
+      "id": 3,
       "options": {
         "legend": {
           "calcs": [
@@ -308,16 +229,11 @@
           "editorMode": "code",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT\n  window_end AS time,\n  COALESCE(m.station_location || ' (' || r.station_id || ')', r.station_id) AS metric,\n  average_rate_of_change AS value\nFROM noaa_rapid_temperature_change r\nLEFT JOIN noaa_station_metadata m ON m.station_id = r.station_id\nWHERE window_start >= '2025-01-01' AND window_end <= '2026-01-01'\nORDER BY time, metric;",
-          "refId": "A",
-          "sql": {
-            "columns": [],
-            "groupBy": [],
-            "limit": 50
-          }
+          "rawSql": "SELECT\n  window_end AS time,\n  COALESCE(m.station_location || ' (' || f.station_id || ')', f.station_id) AS metric,\n  forecast_next_24h AS value\nFROM noaa_temperature_forecast f\nLEFT JOIN noaa_station_metadata m ON m.station_id = f.station_id\nWHERE window_end >= '2025-01-01' AND window_end <= '2026-01-01'\nORDER BY time, metric;",
+          "refId": "A"
         }
       ],
-      "title": "Daily Average Temperature Rate of Change",
+      "title": "Temperature Forecast Trend (Next 24h)",
       "type": "timeseries"
     },
     {
@@ -353,7 +269,7 @@
         "x": 0,
         "y": 15
       },
-      "id": 5,
+      "id": 4,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -376,16 +292,11 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n  COALESCE(m.station_location, r.station_id) AS city,\n  r.station_id,\n  r.window_start,\n  r.window_end,\n  r.min_rate_of_change,\n  r.max_rate_of_change,\n  r.average_rate_of_change,\n  r.rate_of_change_count,\n  r.updated_at\nFROM noaa_rapid_temperature_change r\nLEFT JOIN noaa_station_metadata m ON m.station_id = r.station_id\nWHERE window_start >= '2025-01-01' AND window_end <= '2026-01-01'\nORDER BY ABS(average_rate_of_change) DESC\nLIMIT 100;",
-          "refId": "A",
-          "sql": {
-            "columns": [],
-            "groupBy": [],
-            "limit": 50
-          }
+          "rawSql": "SELECT\n  COALESCE(m.station_location, f.station_id) AS city,\n  f.station_id,\n  f.window_start,\n  f.window_end,\n  f.slope_per_second,\n  f.current_average,\n  f.forecast_next_24h,\n  f.observation_count,\n  f.updated_at\nFROM noaa_temperature_forecast f\nLEFT JOIN noaa_station_metadata m ON m.station_id = f.station_id\nWHERE window_end >= '2025-01-01' AND window_end <= '2026-01-01'\nORDER BY window_end DESC\nLIMIT 100;",
+          "refId": "A"
         }
       ],
-      "title": "Rapid Temperature Change Events",
+      "title": "Recent Temperature Forecasts",
       "type": "table"
     }
   ],
@@ -394,7 +305,7 @@
   "tags": [
     "kafka",
     "noaa",
-    "rapid-change",
+    "forecast",
     "stream-processing"
   ],
   "templating": {
@@ -406,8 +317,8 @@
   },
   "timepicker": {},
   "timezone": "utc",
-  "title": "Pattern 3: NOAA Rapid Temperature Change 2025",
-  "uid": "noaa-rapid-change-2025",
+  "title": "Pattern 7: NOAA Temperature Forecast 2025",
+  "uid": "noaa-temperature-forecast-2025",
   "version": 1,
   "weekStart": ""
 }

@@ -11,6 +11,8 @@ import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
 import fhv.streamprocessing.pattern5.rainduration.YearlyRainDurationDashboardStore;
 import fhv.streamprocessing.pattern6.temperatureranking.AnnualPeakTemperatureRankingDashboardStore;
 import fhv.streamprocessing.pattern6.temperatureranking.TemperatureRankingAggregate;
+import fhv.streamprocessing.pattern7.forecasting.TemperatureForecastDashboardStore;
+import fhv.streamprocessing.pattern7.forecasting.TemperatureForecastEvent;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -25,6 +27,7 @@ public class PostgresDashboardSink implements DashboardSink {
     private final AnnualPeakTemperatureRankingDashboardStore temperatureRankingStore;
     private final BlizzardDashboardStore blizzardStore;
     private final RapidTemperatureChangeDashboardStore rapidChangeStore;
+    private final TemperatureForecastDashboardStore forecastStore;
 
     public PostgresDashboardSink(String jdbcUrl, String user, String password, String stationHistoryUrl) {
         try {
@@ -39,9 +42,12 @@ public class PostgresDashboardSink implements DashboardSink {
             temperatureRankingStore = new AnnualPeakTemperatureRankingDashboardStore(connection);
             blizzardStore = new BlizzardDashboardStore(connection);
             rapidChangeStore = new RapidTemperatureChangeDashboardStore(connection);
+            forecastStore = new TemperatureForecastDashboardStore(connection);
+
             temperatureRankingStore.clearExistingRows();
             blizzardStore.clearExistingRows();
             rapidChangeStore.clearExistingRows();
+            forecastStore.clearExistingRows();
 
             incrementCounter = connection.prepareStatement("""
                 INSERT INTO noaa_stream_counts (kind, total, updated_at)
@@ -137,7 +143,17 @@ public class PostgresDashboardSink implements DashboardSink {
     }
 
     @Override
+    public synchronized void recordTemperatureForecast(String stationForecastKey, TemperatureForecastEvent event) {
+        try {
+            forecastStore.record(stationForecastKey, event);
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not persist temperature forecast for " + stationForecastKey, exception);
+        }
+    }
+
+    @Override
     public synchronized void close() {
+        closeQuietly(forecastStore);
         closeQuietly(rapidChangeStore);
         closeQuietly(blizzardStore);
         closeQuietly(temperatureRankingStore);

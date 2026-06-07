@@ -1,0 +1,67 @@
+package fhv.streamprocessing.pattern7.forecasting;
+
+import fhv.streamprocessing.model.NoaaObservation;
+import fhv.streamprocessing.serde.JsonSerde;
+import java.time.Duration;
+import java.time.Instant;
+import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.streams.KeyValue;
+import org.apache.kafka.streams.kstream.Grouped;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.TimeWindows;
+
+public final class TemperatureForecastTopology {
+    private TemperatureForecastTopology() {
+    }
+
+    public static KStream<String, TemperatureForecastEvent> build(
+        KStream<String, NoaaObservation> observations,
+        int windowDays,
+        int advanceDays,
+        int graceMinutes
+    ) {
+        TimeWindows window = TimeWindows.ofSizeAndGrace(Duration.ofDays(windowDays), Duration.ofMinutes(graceMinutes))
+            .advanceBy(Duration.ofDays(advanceDays));
+
+        return observations
+            .filter((key, observation) -> observation.stationId() != null && observation.observedAt() != null)
+            .filter((key, observation) -> observation.temperatureCelsius() != null)
+            .selectKey((key, observation) -> observation.stationId())
+            .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)))
+            .windowedBy(window)
+            .aggregate(
+                TemperatureTrendAggregate::new,
+                (stationId, observation, aggregate) -> aggregate.add(observation),
+                Materialized.with(Serdes.String(), new JsonSerde<>(TemperatureTrendAggregate.class))
+            )
+            .toStream()
+            .map((windowedStationId, aggregate) -> {
+                StationForecastKey eventKey = new StationForecastKey(
+                    windowedStationId.key(),
+                    Instant.ofEpochMilli(windowedStationId.window().start()),
+                    Instant.ofEpochMilli(windowedStationId.window().end())
+                );
+
+                double slope = aggregate.getSlope();
+                double intercept = aggregate.getIntercept();
+                double currentAverage = aggregate.getLatestAverage();
+                
+                // Forecast for next 24 hours (86400 seconds) after the window ends
+                long windowEnd = windowedStationId.window().end();
+                double windowEndRelative = (windowEnd / 1000.0) - aggregate.getFirstTimestamp();
+                double forecastNext24h = intercept + (slope * (windowEndRelative + 86400));
+
+                TemperatureForecastEvent event = new TemperatureForecastEvent(
+                    windowedStationId.key(),
+                    Instant.ofEpochMilli(windowedStationId.window().start()),
+                    Instant.ofEpochMilli(windowedStationId.window().end()),
+                    slope,
+                    currentAverage,
+                    forecastNext24h,
+                    aggregate.getCount()
+                );
+                return KeyValue.pair(eventKey.asKey(), event);
+            });
+    }
+}

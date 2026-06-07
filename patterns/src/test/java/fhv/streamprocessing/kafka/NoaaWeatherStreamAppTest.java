@@ -248,6 +248,7 @@ class NoaaWeatherStreamAppTest {
             "noaa.weather.daily-temperature-ranking",
             "noaa.weather.blizzard-events",
             "noaa.weather.rapid-temperature-change",
+            "noaa.weather.temperature-forecast",
             2025,
             2025,
             2024,
@@ -262,6 +263,9 @@ class NoaaWeatherStreamAppTest {
             12.0,
             2025,
             24,
+            10,
+            30,
+            1,
             10
         );
 
@@ -292,6 +296,7 @@ class NoaaWeatherStreamAppTest {
             "noaa.weather.daily-temperature-ranking",
             "noaa.weather.blizzard-events",
             "noaa.weather.rapid-temperature-change",
+            "noaa.weather.temperature-forecast",
             2025,
             2025,
             2025,
@@ -306,6 +311,9 @@ class NoaaWeatherStreamAppTest {
             12.0,
             2025,
             24,
+            10,
+            30,
+            1,
             10
         );
 
@@ -521,6 +529,7 @@ class NoaaWeatherStreamAppTest {
             "noaa.weather.daily-temperature-ranking",
             "noaa.weather.blizzard-events",
             "noaa.weather.rapid-temperature-change",
+            "noaa.weather.temperature-forecast",
             rainYear,
             frostYear,
             2025,
@@ -535,6 +544,9 @@ class NoaaWeatherStreamAppTest {
             12.0,
             2025,
             24,
+            10,
+            30,
+            1,
             10
         );
     }
@@ -549,6 +561,7 @@ class NoaaWeatherStreamAppTest {
         String rankingTopic,
         String blizzardTopic,
         String rapidChangeTopic,
+        String forecastTopic,
         int rainYear,
         int frostYear,
         int rankingYear,
@@ -563,7 +576,10 @@ class NoaaWeatherStreamAppTest {
         double blizzardWt,
         int rapidYear,
         int rapidWh,
-        int rapidGm
+        int rapidGm,
+        int forecastWd,
+        int forecastAd,
+        int forecastGm
     ) {
         return NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
             prefix,
@@ -575,6 +591,7 @@ class NoaaWeatherStreamAppTest {
             rankingTopic,
             blizzardTopic,
             rapidChangeTopic,
+            forecastTopic,
             rainYear,
             frostYear,
             rankingYear,
@@ -589,7 +606,10 @@ class NoaaWeatherStreamAppTest {
             blizzardWt,
             rapidYear,
             rapidWh,
-            rapidGm
+            rapidGm,
+            forecastWd,
+            forecastAd,
+            forecastGm
         );
     }
 
@@ -614,6 +634,7 @@ class NoaaWeatherStreamAppTest {
             temperatureRankingTopic,
             blizzardTopic,
             "noaa.weather.rapid-temperature-change",
+            "noaa.weather.temperature-forecast",
             2025,
             2025,
             2025,
@@ -628,6 +649,9 @@ class NoaaWeatherStreamAppTest {
             blizzardWindThresholdMetersPerSecond,
             2025,
             24,
+            10,
+            30,
+            1,
             10
         );
     }
