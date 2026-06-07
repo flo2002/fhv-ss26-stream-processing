@@ -11,6 +11,10 @@ import fhv.streamprocessing.pattern10.blizzard.BlizzardEvent;
 import fhv.streamprocessing.pattern2.frostdays.MonthlyFrostDaysTopology;
 import fhv.streamprocessing.pattern3.rapidchange.RapidTemperatureChangeEvent;
 import fhv.streamprocessing.pattern3.rapidchange.RapidTemperatureChangeTopology;
+import fhv.streamprocessing.pattern4.tourism.TourismWeatherQualityEvent;
+import fhv.streamprocessing.pattern4.tourism.StationRegionMetadataLoader;
+import fhv.streamprocessing.pattern4.tourism.StationRegionResolver;
+import fhv.streamprocessing.pattern4.tourism.TourismWeatherQualityTopology;
 import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
 import fhv.streamprocessing.pattern5.rainduration.YearlyRainDurationTopology;
 import fhv.streamprocessing.pattern6.temperatureranking.AnnualPeakTemperatureRankingTopology;
@@ -141,6 +145,20 @@ public final class NoaaWeatherStreamApp {
                 .to(config.rapidChangeEventsTopic(), Produced.with(Serdes.String(), new JsonSerde<>(RapidTemperatureChangeEvent.class)));
         }
 
+        if (config.runsPattern(StreamPattern.TOURISM_WEATHER_QUALITY)) {
+            StationRegionResolver regionResolver = StationRegionMetadataLoader.loadFromUrl(config.stationHistoryUrl());
+            System.out.printf("Loaded %s station region mappings for tourism weather quality.%n", regionResolver.size());
+            TourismWeatherQualityTopology.build(
+                observations,
+                config.tourismQualityYear(),
+                config.tourismQualityWindowHours(),
+                config.tourismQualityGraceMinutes(),
+                regionResolver
+            )
+                .peek(dashboardSink::recordTourismWeatherQuality)
+                .to(config.tourismQualityTopic(), Produced.with(Serdes.String(), new JsonSerde<>(TourismWeatherQualityEvent.class)));
+        }
+
         if (config.runsPattern(StreamPattern.BLIZZARD)) {
             BlizzardDetectionTopology.build(
                 observations,
@@ -214,6 +232,7 @@ public final class NoaaWeatherStreamApp {
         FROST_DAYS("frost-days"),
         TEMPERATURE_RANKING("temperature-ranking"),
         RAPID_TEMPERATURE_CHANGE("rapid-temperature-change"),
+        TOURISM_WEATHER_QUALITY("tourism-weather-quality"),
         BLIZZARD("blizzard"),
         TEMPERATURE_FORECAST("temperature-forecast");
 
@@ -229,7 +248,7 @@ public final class NoaaWeatherStreamApp {
                 .filter(pattern -> pattern.configValue.equals(normalized))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
-                    "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, frost-days, temperature-ranking, rapid-temperature-change, blizzard, temperature-forecast, all"
+                    "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, frost-days, temperature-ranking, rapid-temperature-change, tourism-weather-quality, blizzard, temperature-forecast, all"
                 ));
         }
 
@@ -249,6 +268,7 @@ public final class NoaaWeatherStreamApp {
         String dailyTemperatureRankingTopic,
         String blizzardEventsTopic,
         String rapidChangeEventsTopic,
+        String tourismQualityTopic,
         String forecastEventsTopic,
         int rainDurationYear,
         int frostCountYear,
@@ -265,6 +285,9 @@ public final class NoaaWeatherStreamApp {
         int rapidChangeYear,
         int rapidChangeWindowHours,
         int rapidChangeGraceMinutes,
+        int tourismQualityYear,
+        int tourismQualityWindowHours,
+        int tourismQualityGraceMinutes,
         int forecastWindowDays,
         int forecastAdvanceDays,
         int forecastGraceMinutes,
@@ -284,6 +307,7 @@ public final class NoaaWeatherStreamApp {
             String dailyTemperatureRankingTopic = env("KAFKA_DAILY_TEMPERATURE_RANKING_TOPIC", "noaa.weather.daily-temperature-ranking");
             String blizzardEventsTopic = env("KAFKA_BLIZZARD_EVENTS_TOPIC", "noaa.weather.blizzard-events");
             String rapidChangeEventsTopic = env("KAFKA_RAPID_CHANGE_EVENTS_TOPIC", "noaa.weather.rapid-temperature-change");
+            String tourismQualityTopic = env("KAFKA_TOURISM_QUALITY_TOPIC", "noaa.weather.tourism-weather-quality");
             String forecastEventsTopic = env("KAFKA_FORECAST_EVENTS_TOPIC", "noaa.weather.temperature-forecast");
             int rainDurationYear = envInt("RAIN_DURATION_YEAR", 2025);
             int frostCountYear = envInt("FROST_COUNT_YEAR", 2025);
@@ -300,6 +324,9 @@ public final class NoaaWeatherStreamApp {
             int rapidChangeYear = envInt("RAPID_CHANGE_YEAR", 2025);
             int rapidChangeWindowHours = envInt("RAPID_CHANGE_WINDOW_HOURS", 24);
             int rapidChangeGraceMinutes = envInt("RAPID_CHANGE_GRACE_MINUTES", 10);
+            int tourismQualityYear = envInt("TOURISM_QUALITY_YEAR", 2025);
+            int tourismQualityWindowHours = envInt("TOURISM_QUALITY_WINDOW_HOURS", 24);
+            int tourismQualityGraceMinutes = envInt("TOURISM_QUALITY_GRACE_MINUTES", 10);
             int forecastWindowDays = envInt("FORECAST_WINDOW_DAYS", 30);
             int forecastAdvanceDays = envInt("FORECAST_ADVANCE_DAYS", 1);
             int forecastGraceMinutes = envInt("FORECAST_GRACE_MINUTES", 10);
@@ -315,6 +342,7 @@ public final class NoaaWeatherStreamApp {
                     dailyTemperatureRankingTopic,
                     blizzardEventsTopic,
                     rapidChangeEventsTopic,
+                    tourismQualityTopic,
                     forecastEventsTopic,
                     rainDurationYear,
                     frostCountYear,
@@ -331,6 +359,9 @@ public final class NoaaWeatherStreamApp {
                     rapidChangeYear,
                     rapidChangeWindowHours,
                     rapidChangeGraceMinutes,
+                    tourismQualityYear,
+                    tourismQualityWindowHours,
+                    tourismQualityGraceMinutes,
                     forecastWindowDays,
                     forecastAdvanceDays,
                     forecastGraceMinutes
@@ -343,6 +374,7 @@ public final class NoaaWeatherStreamApp {
                 dailyTemperatureRankingTopic,
                 blizzardEventsTopic,
                 rapidChangeEventsTopic,
+                tourismQualityTopic,
                 forecastEventsTopic,
                 rainDurationYear,
                 frostCountYear,
@@ -359,6 +391,9 @@ public final class NoaaWeatherStreamApp {
                 rapidChangeYear,
                 rapidChangeWindowHours,
                 rapidChangeGraceMinutes,
+                tourismQualityYear,
+                tourismQualityWindowHours,
+                tourismQualityGraceMinutes,
                 forecastWindowDays,
                 forecastAdvanceDays,
                 forecastGraceMinutes,
@@ -388,6 +423,7 @@ public final class NoaaWeatherStreamApp {
             String dailyTemperatureRankingTopic,
             String blizzardEventsTopic,
             String rapidChangeEventsTopic,
+            String tourismQualityTopic,
             String forecastEventsTopic,
             int rainDurationYear,
             int frostCountYear,
@@ -404,6 +440,9 @@ public final class NoaaWeatherStreamApp {
             int rapidChangeYear,
             int rapidChangeWindowHours,
             int rapidChangeGraceMinutes,
+            int tourismQualityYear,
+            int tourismQualityWindowHours,
+            int tourismQualityGraceMinutes,
             int forecastWindowDays,
             int forecastAdvanceDays,
             int forecastGraceMinutes
@@ -424,6 +463,7 @@ public final class NoaaWeatherStreamApp {
                 dailyTemperatureRankingTopic,
                 blizzardEventsTopic,
                 rapidChangeEventsTopic,
+                tourismQualityTopic,
                 forecastEventsTopic,
                 rainDurationYear,
                 frostCountYear,
@@ -440,6 +480,9 @@ public final class NoaaWeatherStreamApp {
                 rapidChangeYear,
                 rapidChangeWindowHours,
                 rapidChangeGraceMinutes,
+                tourismQualityYear,
+                tourismQualityWindowHours,
+                tourismQualityGraceMinutes,
                 forecastWindowDays,
                 forecastAdvanceDays,
                 forecastGraceMinutes
@@ -466,6 +509,7 @@ public final class NoaaWeatherStreamApp {
                 "noaa.weather.daily-temperature-ranking",
                 "noaa.weather.blizzard-events",
                 "noaa.weather.rapid-temperature-change",
+                "noaa.weather.tourism-weather-quality",
                 "noaa.weather.temperature-forecast",
                 rainDurationYear,
                 frostCountYear,
@@ -479,6 +523,9 @@ public final class NoaaWeatherStreamApp {
                 10,
                 0.0,
                 12.0,
+                2025,
+                24,
+                10,
                 2025,
                 24,
                 10,
@@ -506,6 +553,7 @@ public final class NoaaWeatherStreamApp {
                 "noaa.weather.daily-temperature-ranking",
                 "noaa.weather.blizzard-events",
                 "noaa.weather.rapid-temperature-change",
+                "noaa.weather.tourism-weather-quality",
                 "noaa.weather.temperature-forecast",
                 rainDurationYear,
                 2025,
@@ -519,6 +567,9 @@ public final class NoaaWeatherStreamApp {
                 10,
                 0.0,
                 12.0,
+                2025,
+                24,
+                10,
                 2025,
                 24,
                 10,
@@ -558,6 +609,76 @@ public final class NoaaWeatherStreamApp {
             int forecastAdvanceDays,
             int forecastGraceMinutes
         ) {
+            return generatedApplicationId(
+                prefix,
+                inputTopics,
+                streamPatterns,
+                dailyAverageTopic,
+                yearlyRainDurationTopic,
+                monthlyFrostDaysTopic,
+                dailyTemperatureRankingTopic,
+                blizzardEventsTopic,
+                rapidChangeEventsTopic,
+                "noaa.weather.tourism-weather-quality",
+                forecastEventsTopic,
+                rainDurationYear,
+                frostCountYear,
+                temperatureRankingYear,
+                temperatureRankingWindowHours,
+                temperatureRankingAdvanceMinutes,
+                temperatureRankingGraceMinutes,
+                blizzardYear,
+                blizzardWindowHours,
+                blizzardAdvanceHours,
+                blizzardGraceMinutes,
+                blizzardFreezingThresholdCelsius,
+                blizzardWindThresholdMetersPerSecond,
+                rapidChangeYear,
+                rapidChangeWindowHours,
+                rapidChangeGraceMinutes,
+                2025,
+                24,
+                10,
+                forecastWindowDays,
+                forecastAdvanceDays,
+                forecastGraceMinutes
+            );
+        }
+
+        static String generatedApplicationId(
+            String prefix,
+            List<String> inputTopics,
+            Set<StreamPattern> streamPatterns,
+            String dailyAverageTopic,
+            String yearlyRainDurationTopic,
+            String monthlyFrostDaysTopic,
+            String dailyTemperatureRankingTopic,
+            String blizzardEventsTopic,
+            String rapidChangeEventsTopic,
+            String tourismQualityTopic,
+            String forecastEventsTopic,
+            int rainDurationYear,
+            int frostCountYear,
+            int temperatureRankingYear,
+            int temperatureRankingWindowHours,
+            int temperatureRankingAdvanceMinutes,
+            int temperatureRankingGraceMinutes,
+            int blizzardYear,
+            int blizzardWindowHours,
+            int blizzardAdvanceHours,
+            int blizzardGraceMinutes,
+            double blizzardFreezingThresholdCelsius,
+            double blizzardWindThresholdMetersPerSecond,
+            int rapidChangeYear,
+            int rapidChangeWindowHours,
+            int rapidChangeGraceMinutes,
+            int tourismQualityYear,
+            int tourismQualityWindowHours,
+            int tourismQualityGraceMinutes,
+            int forecastWindowDays,
+            int forecastAdvanceDays,
+            int forecastGraceMinutes
+        ) {
             String sourceTopics = inputTopics.stream()
                 .sorted()
                 .collect(Collectors.joining("-"));
@@ -571,6 +692,7 @@ public final class NoaaWeatherStreamApp {
                     dailyTemperatureRankingTopic,
                     blizzardEventsTopic,
                     rapidChangeEventsTopic,
+                    tourismQualityTopic,
                     forecastEventsTopic,
                     rainDurationYear,
                     frostCountYear,
@@ -587,6 +709,9 @@ public final class NoaaWeatherStreamApp {
                     rapidChangeYear,
                     rapidChangeWindowHours,
                     rapidChangeGraceMinutes,
+                    tourismQualityYear,
+                    tourismQualityWindowHours,
+                    tourismQualityGraceMinutes,
                     forecastWindowDays,
                     forecastAdvanceDays,
                     forecastGraceMinutes
@@ -609,6 +734,7 @@ public final class NoaaWeatherStreamApp {
             String dailyTemperatureRankingTopic,
             String blizzardEventsTopic,
             String rapidChangeEventsTopic,
+            String tourismQualityTopic,
             String forecastEventsTopic,
             int rainDurationYear,
             int frostCountYear,
@@ -625,6 +751,9 @@ public final class NoaaWeatherStreamApp {
             int rapidChangeYear,
             int rapidChangeWindowHours,
             int rapidChangeGraceMinutes,
+            int tourismQualityYear,
+            int tourismQualityWindowHours,
+            int tourismQualityGraceMinutes,
             int forecastWindowDays,
             int forecastAdvanceDays,
             int forecastGraceMinutes
@@ -637,6 +766,7 @@ public final class NoaaWeatherStreamApp {
                 dailyTemperatureRankingTopic,
                 blizzardEventsTopic,
                 rapidChangeEventsTopic,
+                tourismQualityTopic,
                 forecastEventsTopic
             );
             if (pattern == StreamPattern.RAIN_DURATION) {
@@ -672,6 +802,13 @@ public final class NoaaWeatherStreamApp {
                     + "-gm" + forecastGraceMinutes
                     + "-v1";
             }
+            if (pattern == StreamPattern.TOURISM_WEATHER_QUALITY) {
+                return key
+                    + "-" + tourismQualityYear
+                    + "-wh" + tourismQualityWindowHours
+                    + "-gm" + tourismQualityGraceMinutes
+                    + "-metadata-region-v1";
+            }
             return key;
         }
 
@@ -683,6 +820,7 @@ public final class NoaaWeatherStreamApp {
             String dailyTemperatureRankingTopic,
             String blizzardEventsTopic,
             String rapidChangeEventsTopic,
+            String tourismQualityTopic,
             String forecastEventsTopic
         ) {
             return switch (pattern) {
@@ -692,6 +830,7 @@ public final class NoaaWeatherStreamApp {
                 case TEMPERATURE_RANKING -> dailyTemperatureRankingTopic;
                 case BLIZZARD -> blizzardEventsTopic;
                 case RAPID_TEMPERATURE_CHANGE -> rapidChangeEventsTopic;
+                case TOURISM_WEATHER_QUALITY -> tourismQualityTopic;
                 case TEMPERATURE_FORECAST -> forecastEventsTopic;
             };
         }

@@ -94,6 +94,8 @@ class TemperatureForecastTopologyTest {
             null,
             null,
             null,
+            null,
+            null,
             "/tmp/source",
             1L,
             "raw"

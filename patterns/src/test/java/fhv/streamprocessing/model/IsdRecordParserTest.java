@@ -11,6 +11,7 @@ class IsdRecordParserTest {
     private static final String SAMPLE_RECORD = "0104010010999992025032711004+70939-008669FM-12+001099999V0200051N0104199999999999999999-00651-00941100111ADDAA199999999KA1120M-00631KA2120N-00681MA1999999099991MD1310031+9999OC101321OD199901121999REMSYN004BUFR";
     private static final String RAIN_RECORD = SAMPLE_RECORD.replace("AA199999999", "AA106001231");
     private static final String SECOND_RAIN_GROUP_RECORD = SAMPLE_RECORD.replace("AA199999999", "AA199999999AA212001231");
+    private static final String CLEAR_VISIBILITY_RECORD = replaceRange(SAMPLE_RECORD, 78, 85, "0100001");
 
     @Test
     void parsesStationTimestampAndTemperature() {
@@ -22,7 +23,16 @@ class IsdRecordParserTest {
         assertEquals("1", observation.temperatureQualityCode());
         assertEquals(10.4, observation.windSpeedMetersPerSecond());
         assertEquals("1", observation.windSpeedQualityCode());
+        assertEquals(null, observation.skyClarityScore());
         assertEquals("010010-99999|2025-03-27", StationDayKey.fromObservation(observation).asKey());
+    }
+
+    @Test
+    void parsesSkyClarityScoreFromVisibilityDistance() {
+        NoaaObservation observation = IsdRecordParser.parse(CLEAR_VISIBILITY_RECORD, null, "/pub/data/noaa/2025/010010-99999-2025.gz", 754);
+
+        assertEquals(100.0, observation.skyClarityScore());
+        assertEquals("1", observation.visibilityQualityCode());
     }
 
     @Test
@@ -38,5 +48,9 @@ class IsdRecordParserTest {
         NoaaObservation observation = IsdRecordParser.parse(SECOND_RAIN_GROUP_RECORD, null, "/pub/data/noaa/2025/010010-99999-2025.gz", 753);
 
         assertEquals(12, observation.rainDurationHours());
+    }
+
+    private static String replaceRange(String value, int beginIndex, int endIndex, String replacement) {
+        return value.substring(0, beginIndex) + replacement + value.substring(endIndex);
     }
 }

@@ -126,6 +126,21 @@ $env:STREAM_PATTERN='rapid-temperature-change'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
 
+## Pattern 4: tourism weather quality index (Haroldas)
+thoughts:
+- Implemented a regional Tourism Weather Quality Index.
+- The NOAA ISD ingest gives us temperature, wind speed, and visibility distance, so these are real input dimensions for the score.
+- The pattern idea mentions sunshine. NOAA ISD does not provide direct sunshine duration in the mandatory part we parse, so we use visibility as a practical sky clarity proxy instead of a fake placeholder. Visibility is converted to `sky_clarity_score` from 0 to 100, where 10 km or more means very clear.
+- Regions are derived from the NOAA ISD station history metadata. If a station has `country_code` and `state_code`, the region becomes `country-state`, for example `US-CA` / `United States / CA`; otherwise it uses the country, for example `NO` / `Norway`.
+- This is a real metadata-backed region instead of a station id prefix. It is still a simple region model, but it is understandable in Grafana and can later be refined into latitude/longitude grid cells or tourism-specific areas.
+- The stream uses a tumbling 24 hour window for 2025. For each region window it calculates average temperature, average wind speed, average sky clarity, a 0-100 quality score, and a class: `poor`, `ok`, `good`, or `excellent`.
+- Score decision: temperature is weighted most strongly because comfortable temperature is usually the main tourism quality factor. Wind and sky clarity also matter. Formula: `quality = temp_score * 0.55 + wind_score * 0.25 + sky_clarity_score * 0.20`.
+- Dashboard: `NOAA Tourism Weather Quality 2025`
+```powershell
+$env:STREAM_PATTERN='tourism-weather-quality'
+docker compose up --build -d --force-recreate noaa-stream-client
+```
+
 ## Pattern 5: compute average rain duration for 2025 (Florian)
 thoughts:
 - Similar to pattern 1, but I created a new topic `noaa.weather.rain` for the parsed rain duration data that should be the processed output of the "raw" topic.
@@ -178,4 +193,3 @@ docker compose up --build -d --force-recreate noaa-stream-client
 ```
 
 ![Pattern 10: Blizzard](./assets/Screenshot%2026-06-06%195120.png)
-

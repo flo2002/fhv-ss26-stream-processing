@@ -44,13 +44,8 @@ public final class TemperatureForecastTopology {
                 );
 
                 double slope = aggregate.getSlope();
-                double intercept = aggregate.getIntercept();
                 double currentAverage = aggregate.getLatestAverage();
-                
-                // Forecast for next 24 hours (86400 seconds) after the window ends
-                long windowEnd = windowedStationId.window().end();
-                double windowEndRelative = (windowEnd / 1000.0) - aggregate.getFirstTimestamp();
-                double forecastNext24h = intercept + (slope * (windowEndRelative + 86400));
+                double forecastNext24h = currentAverage + (slope * 86400);
 
                 TemperatureForecastEvent event = new TemperatureForecastEvent(
                     windowedStationId.key(),

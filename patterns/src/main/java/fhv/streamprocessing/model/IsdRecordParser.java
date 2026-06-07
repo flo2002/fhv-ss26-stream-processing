@@ -14,7 +14,7 @@ public final class IsdRecordParser {
 
     public static NoaaObservation parse(String record, OffsetDateTime fallbackObservedAt, String sourcePath, long recordNumber) {
         if (record == null) {
-            return new NoaaObservation(null, null, fallbackObservedAt, null, null, null, null, null, sourcePath, recordNumber, null);
+            return new NoaaObservation(null, null, fallbackObservedAt, null, null, null, null, null, null, null, sourcePath, recordNumber, null);
         }
 
         OffsetDateTime observedAt = parseObservedAt(record, fallbackObservedAt);
@@ -26,6 +26,8 @@ public final class IsdRecordParser {
             substringOrNull(record, 92, 93),
             parseWindSpeedMetersPerSecond(record),
             substringOrNull(record, 69, 70),
+            parseSkyClarityScore(record),
+            substringOrNull(record, 84, 85),
             parseRainDurationHours(record),
             sourcePath,
             recordNumber,
@@ -83,6 +85,24 @@ public final class IsdRecordParser {
         }
     }
 
+    private static Double parseSkyClarityScore(String record) {
+        String rawVisibilityMeters = substringOrNull(record, 78, 84);
+        String qualityCode = substringOrNull(record, 84, 85);
+        if (rawVisibilityMeters == null
+            || qualityCode == null
+            || rawVisibilityMeters.equals("999999")
+            || qualityCode.equals("9")) {
+            return null;
+        }
+
+        try {
+            int visibilityMeters = Integer.parseInt(rawVisibilityMeters);
+            return round1(Math.min(100.0, Math.max(0.0, visibilityMeters / 10000.0 * 100.0)));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
     private static Integer parseRainDurationHours(String record) {
         Integer rainDurationHours = null;
         for (int precipitationGroup = 1; precipitationGroup <= 4; precipitationGroup++) {
@@ -128,5 +148,9 @@ public final class IsdRecordParser {
             return null;
         }
         return value.substring(beginIndex, endIndex);
+    }
+
+    private static double round1(double value) {
+        return Math.round(value * 10.0) / 10.0;
     }
 }

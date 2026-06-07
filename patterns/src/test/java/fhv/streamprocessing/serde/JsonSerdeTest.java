@@ -21,6 +21,8 @@ class JsonSerdeTest {
             10.4,
             "1",
             null,
+            null,
+            null,
             "/pub/data/noaa/2025/010010-99999-2025.gz",
             751,
             "raw"

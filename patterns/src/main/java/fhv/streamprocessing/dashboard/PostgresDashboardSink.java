@@ -7,6 +7,8 @@ import fhv.streamprocessing.pattern10.blizzard.BlizzardEvent;
 import fhv.streamprocessing.pattern2.frostdays.MonthlyFrostDaysDashboardStore;
 import fhv.streamprocessing.pattern3.rapidchange.RapidTemperatureChangeDashboardStore;
 import fhv.streamprocessing.pattern3.rapidchange.RapidTemperatureChangeEvent;
+import fhv.streamprocessing.pattern4.tourism.TourismWeatherQualityDashboardStore;
+import fhv.streamprocessing.pattern4.tourism.TourismWeatherQualityEvent;
 import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
 import fhv.streamprocessing.pattern5.rainduration.YearlyRainDurationDashboardStore;
 import fhv.streamprocessing.pattern6.temperatureranking.AnnualPeakTemperatureRankingDashboardStore;
@@ -27,6 +29,7 @@ public class PostgresDashboardSink implements DashboardSink {
     private final AnnualPeakTemperatureRankingDashboardStore temperatureRankingStore;
     private final BlizzardDashboardStore blizzardStore;
     private final RapidTemperatureChangeDashboardStore rapidChangeStore;
+    private final TourismWeatherQualityDashboardStore tourismQualityStore;
     private final TemperatureForecastDashboardStore forecastStore;
 
     public PostgresDashboardSink(String jdbcUrl, String user, String password, String stationHistoryUrl) {
@@ -42,11 +45,13 @@ public class PostgresDashboardSink implements DashboardSink {
             temperatureRankingStore = new AnnualPeakTemperatureRankingDashboardStore(connection);
             blizzardStore = new BlizzardDashboardStore(connection);
             rapidChangeStore = new RapidTemperatureChangeDashboardStore(connection);
+            tourismQualityStore = new TourismWeatherQualityDashboardStore(connection);
             forecastStore = new TemperatureForecastDashboardStore(connection);
 
             temperatureRankingStore.clearExistingRows();
             blizzardStore.clearExistingRows();
             rapidChangeStore.clearExistingRows();
+            tourismQualityStore.clearExistingRows();
             forecastStore.clearExistingRows();
 
             incrementCounter = connection.prepareStatement("""
@@ -143,6 +148,15 @@ public class PostgresDashboardSink implements DashboardSink {
     }
 
     @Override
+    public synchronized void recordTourismWeatherQuality(String regionWindowKey, TourismWeatherQualityEvent event) {
+        try {
+            tourismQualityStore.record(regionWindowKey, event);
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not persist tourism weather quality for " + regionWindowKey, exception);
+        }
+    }
+
+    @Override
     public synchronized void recordTemperatureForecast(String stationForecastKey, TemperatureForecastEvent event) {
         try {
             forecastStore.record(stationForecastKey, event);
@@ -154,6 +168,7 @@ public class PostgresDashboardSink implements DashboardSink {
     @Override
     public synchronized void close() {
         closeQuietly(forecastStore);
+        closeQuietly(tourismQualityStore);
         closeQuietly(rapidChangeStore);
         closeQuietly(blizzardStore);
         closeQuietly(temperatureRankingStore);

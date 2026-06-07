@@ -11,6 +11,8 @@ public record NoaaObservation(
     String temperatureQualityCode,
     Double windSpeedMetersPerSecond,
     String windSpeedQualityCode,
+    Double skyClarityScore,
+    String visibilityQualityCode,
     Integer rainDurationHours,
     String sourcePath,
     long recordNumber,
