@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import org.apache.kafka.common.serialization.LongDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -39,7 +40,7 @@ import org.junit.jupiter.api.Test;
 class NoaaWeatherStreamAppTest {
     @Test
     void generatedApplicationIdIsStableForSameRawInputsAndPatternOutputs() {
-        String first = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String first = testGeneratedApplicationId(
             "NOAA Weather Dashboard",
             List.of("noaa.weather.raw.backfill", "noaa.weather.raw"),
             EnumSet.of(
@@ -48,10 +49,12 @@ class NoaaWeatherStreamAppTest {
             ),
             "noaa.weather.daily-average-temperature",
             "noaa.weather.yearly-average-rain-duration",
+            "noaa.weather.monthly-frost-days",
+            2025,
             2025
         );
 
-        String second = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String second = testGeneratedApplicationId(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw", "noaa.weather.raw.backfill"),
             EnumSet.of(
@@ -60,6 +63,8 @@ class NoaaWeatherStreamAppTest {
             ),
             "noaa.weather.daily-average-temperature",
             "noaa.weather.yearly-average-rain-duration",
+            "noaa.weather.monthly-frost-days",
+            2025,
             2025
         );
 
@@ -68,21 +73,25 @@ class NoaaWeatherStreamAppTest {
 
     @Test
     void generatedApplicationIdChangesWhenPatternOutputTopicChanges() {
-        String original = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String original = testGeneratedApplicationId(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw"),
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.RAIN_DURATION),
             "noaa.weather.daily-average-temperature",
             "noaa.weather.yearly-average-rain-duration",
+            "noaa.weather.monthly-frost-days",
+            2025,
             2025
         );
 
-        String newPatternTopic = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String newPatternTopic = testGeneratedApplicationId(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw"),
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.RAIN_DURATION),
             "noaa.weather.daily-average-temperature",
             "noaa.weather.yearly-average-rain-duration-v2",
+            "noaa.weather.monthly-frost-days",
+            2025,
             2025
         );
 
@@ -91,22 +100,26 @@ class NoaaWeatherStreamAppTest {
 
     @Test
     void generatedApplicationIdChangesWhenRainDurationYearChanges() {
-        String original = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String original = testGeneratedApplicationId(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw"),
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.RAIN_DURATION),
             "noaa.weather.daily-average-temperature",
             "noaa.weather.yearly-average-rain-duration",
+            "noaa.weather.monthly-frost-days",
+            2025,
             2025
         );
 
-        String differentRainYear = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String differentRainYear = testGeneratedApplicationId(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw"),
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.RAIN_DURATION),
             "noaa.weather.daily-average-temperature",
             "noaa.weather.yearly-average-rain-duration",
-            2024
+            "noaa.weather.monthly-frost-days",
+            2024,
+            2025
         );
 
         assertNotEquals(original, differentRainYear);
@@ -114,12 +127,14 @@ class NoaaWeatherStreamAppTest {
 
     @Test
     void generatedApplicationIdStaysShortEnoughForKafkaStreamsInternalTopics() {
-        String applicationId = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String applicationId = testGeneratedApplicationId(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw"),
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.RAIN_DURATION),
             "noaa.weather.daily-average-temperature",
             "noaa.weather.yearly-average-rain-duration",
+            "noaa.weather.monthly-frost-days",
+            2025,
             2025
         );
 
@@ -128,7 +143,7 @@ class NoaaWeatherStreamAppTest {
 
     @Test
     void generatedApplicationIdChangesWhenFrostOutputTopicChanges() {
-        String original = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String original = testGeneratedApplicationId(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw"),
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.FROST_DAYS),
@@ -139,7 +154,7 @@ class NoaaWeatherStreamAppTest {
             2025
         );
 
-        String newPatternTopic = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String newPatternTopic = testGeneratedApplicationId(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw"),
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.FROST_DAYS),
@@ -155,7 +170,7 @@ class NoaaWeatherStreamAppTest {
 
     @Test
     void generatedApplicationIdChangesWhenFrostYearChanges() {
-        String original = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String original = testGeneratedApplicationId(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw"),
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.FROST_DAYS),
@@ -166,7 +181,7 @@ class NoaaWeatherStreamAppTest {
             2025
         );
 
-        String differentFrostYear = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String differentFrostYear = testGeneratedApplicationId(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw"),
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.FROST_DAYS),
@@ -223,7 +238,7 @@ class NoaaWeatherStreamAppTest {
             12.0
         );
 
-        String differentRankingYear = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String differentRankingYear = testGeneratedApplicationIdFull(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw"),
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.TEMPERATURE_RANKING),
@@ -232,6 +247,7 @@ class NoaaWeatherStreamAppTest {
             "noaa.weather.monthly-frost-days",
             "noaa.weather.daily-temperature-ranking",
             "noaa.weather.blizzard-events",
+            "noaa.weather.rapid-temperature-change",
             2025,
             2025,
             2024,
@@ -243,7 +259,10 @@ class NoaaWeatherStreamAppTest {
             1,
             10,
             0.0,
-            12.0
+            12.0,
+            2025,
+            24,
+            10
         );
 
         assertNotEquals(original, differentRankingYear);
@@ -263,7 +282,7 @@ class NoaaWeatherStreamAppTest {
             12.0
         );
 
-        String differentWindow = NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+        String differentWindow = testGeneratedApplicationIdFull(
             "noaa-weather-dashboard",
             List.of("noaa.weather.raw"),
             EnumSet.of(NoaaWeatherStreamApp.StreamPattern.TEMPERATURE_RANKING),
@@ -272,6 +291,7 @@ class NoaaWeatherStreamAppTest {
             "noaa.weather.monthly-frost-days",
             "noaa.weather.daily-temperature-ranking",
             "noaa.weather.blizzard-events",
+            "noaa.weather.rapid-temperature-change",
             2025,
             2025,
             2025,
@@ -283,7 +303,10 @@ class NoaaWeatherStreamAppTest {
             1,
             10,
             0.0,
-            12.0
+            12.0,
+            2025,
+            24,
+            10
         );
 
         assertEquals(original, differentWindow);
@@ -478,6 +501,98 @@ class NoaaWeatherStreamAppTest {
         }
     }
 
+    private String testGeneratedApplicationId(
+        String prefix,
+        List<String> inputTopics,
+        Set<NoaaWeatherStreamApp.StreamPattern> patterns,
+        String dailyAvgTopic,
+        String yearlyRainTopic,
+        String monthlyFrostTopic,
+        int rainYear,
+        int frostYear
+    ) {
+        return NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+            prefix,
+            inputTopics,
+            patterns,
+            dailyAvgTopic,
+            yearlyRainTopic,
+            monthlyFrostTopic,
+            "noaa.weather.daily-temperature-ranking",
+            "noaa.weather.blizzard-events",
+            "noaa.weather.rapid-temperature-change",
+            rainYear,
+            frostYear,
+            2025,
+            24,
+            60,
+            10,
+            2025,
+            24,
+            1,
+            10,
+            0.0,
+            12.0,
+            2025,
+            24,
+            10
+        );
+    }
+
+    private String testGeneratedApplicationIdFull(
+        String prefix,
+        List<String> inputTopics,
+        Set<NoaaWeatherStreamApp.StreamPattern> patterns,
+        String dailyAvgTopic,
+        String yearlyRainTopic,
+        String monthlyFrostTopic,
+        String rankingTopic,
+        String blizzardTopic,
+        String rapidChangeTopic,
+        int rainYear,
+        int frostYear,
+        int rankingYear,
+        int rankingWh,
+        int rankingAm,
+        int rankingGm,
+        int blizzardYear,
+        int blizzardWh,
+        int blizzardAh,
+        int blizzardGm,
+        double blizzardFt,
+        double blizzardWt,
+        int rapidYear,
+        int rapidWh,
+        int rapidGm
+    ) {
+        return NoaaWeatherStreamApp.AppConfig.generatedApplicationId(
+            prefix,
+            inputTopics,
+            patterns,
+            dailyAvgTopic,
+            yearlyRainTopic,
+            monthlyFrostTopic,
+            rankingTopic,
+            blizzardTopic,
+            rapidChangeTopic,
+            rainYear,
+            frostYear,
+            rankingYear,
+            rankingWh,
+            rankingAm,
+            rankingGm,
+            blizzardYear,
+            blizzardWh,
+            blizzardAh,
+            blizzardGm,
+            blizzardFt,
+            blizzardWt,
+            rapidYear,
+            rapidWh,
+            rapidGm
+        );
+    }
+
     private static String fullGeneratedApplicationId(
         EnumSet<NoaaWeatherStreamApp.StreamPattern> patterns,
         String temperatureRankingTopic,
@@ -498,6 +613,7 @@ class NoaaWeatherStreamAppTest {
             "noaa.weather.monthly-frost-days",
             temperatureRankingTopic,
             blizzardTopic,
+            "noaa.weather.rapid-temperature-change",
             2025,
             2025,
             2025,
@@ -509,7 +625,10 @@ class NoaaWeatherStreamAppTest {
             blizzardAdvanceHours,
             blizzardGraceMinutes,
             blizzardFreezingThresholdCelsius,
-            blizzardWindThresholdMetersPerSecond
+            blizzardWindThresholdMetersPerSecond,
+            2025,
+            24,
+            10
         );
     }
 

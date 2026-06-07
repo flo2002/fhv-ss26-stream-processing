@@ -156,3 +156,15 @@ docker compose up --build -d --force-recreate noaa-stream-client
 ```
 
 ![Pattern 10: Blizzard](./assets/Screenshot%2026-06-06%195120.png)
+
+## Pattern 3: rapid temperature change detection (Haroldas)
+thoughts:
+- Implemented as summary statistics on time-dependent functions over a sliding window.
+- Calculates the rate of temperature change (°C/h) between consecutive readings for each station.
+- Aggregates these rates over a window (default 24h) to find the minimum, maximum, and average rate of change.
+- Useful for detecting sudden warming or cooling events that could indicate passing weather fronts.
+- Dashboard: `NOAA Rapid Temperature Change 2025`
+```powershell
+$env:STREAM_PATTERN='rapid-temperature-change'
+docker compose up --build -d --force-recreate noaa-stream-client
+```

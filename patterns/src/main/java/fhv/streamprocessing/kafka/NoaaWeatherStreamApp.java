@@ -9,6 +9,8 @@ import fhv.streamprocessing.pattern1.temperature.TemperatureAggregate;
 import fhv.streamprocessing.pattern10.blizzard.BlizzardDetectionTopology;
 import fhv.streamprocessing.pattern10.blizzard.BlizzardEvent;
 import fhv.streamprocessing.pattern2.frostdays.MonthlyFrostDaysTopology;
+import fhv.streamprocessing.pattern3.rapidchange.RapidTemperatureChangeEvent;
+import fhv.streamprocessing.pattern3.rapidchange.RapidTemperatureChangeTopology;
 import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
 import fhv.streamprocessing.pattern5.rainduration.YearlyRainDurationTopology;
 import fhv.streamprocessing.pattern6.temperatureranking.AnnualPeakTemperatureRankingTopology;
@@ -126,6 +128,17 @@ public final class NoaaWeatherStreamApp {
                 .to(config.monthlyFrostDaysTopic(), Produced.with(Serdes.String(), Serdes.Long()));
         }
 
+        if (config.runsPattern(StreamPattern.RAPID_TEMPERATURE_CHANGE)) {
+            RapidTemperatureChangeTopology.build(
+                observations,
+                config.rapidChangeYear(),
+                config.rapidChangeWindowHours(),
+                config.rapidChangeGraceMinutes()
+            )
+                .peek(dashboardSink::recordRapidTemperatureChange)
+                .to(config.rapidChangeEventsTopic(), Produced.with(Serdes.String(), new JsonSerde<>(RapidTemperatureChangeEvent.class)));
+        }
+
         if (config.runsPattern(StreamPattern.BLIZZARD)) {
             BlizzardDetectionTopology.build(
                 observations,
@@ -187,6 +200,7 @@ public final class NoaaWeatherStreamApp {
         RAIN_DURATION("rain-duration"),
         FROST_DAYS("frost-days"),
         TEMPERATURE_RANKING("temperature-ranking"),
+        RAPID_TEMPERATURE_CHANGE("rapid-temperature-change"),
         BLIZZARD("blizzard");
 
         private final String configValue;
@@ -201,7 +215,7 @@ public final class NoaaWeatherStreamApp {
                 .filter(pattern -> pattern.configValue.equals(normalized))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
-                    "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, frost-days, temperature-ranking, blizzard, all"
+                    "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, frost-days, temperature-ranking, rapid-temperature-change, blizzard, all"
                 ));
         }
 
@@ -220,6 +234,7 @@ public final class NoaaWeatherStreamApp {
         String monthlyFrostDaysTopic,
         String dailyTemperatureRankingTopic,
         String blizzardEventsTopic,
+        String rapidChangeEventsTopic,
         int rainDurationYear,
         int frostCountYear,
         int temperatureRankingYear,
@@ -232,6 +247,9 @@ public final class NoaaWeatherStreamApp {
         int blizzardGraceMinutes,
         double blizzardFreezingThresholdCelsius,
         double blizzardWindThresholdMetersPerSecond,
+        int rapidChangeYear,
+        int rapidChangeWindowHours,
+        int rapidChangeGraceMinutes,
         boolean dashboardEnabled,
         String dashboardJdbcUrl,
         String dashboardDbUser,
@@ -247,6 +265,7 @@ public final class NoaaWeatherStreamApp {
             String monthlyFrostDaysTopic = env("KAFKA_MONTHLY_FROST_DAYS_TOPIC", "noaa.weather.monthly-frost-days");
             String dailyTemperatureRankingTopic = env("KAFKA_DAILY_TEMPERATURE_RANKING_TOPIC", "noaa.weather.daily-temperature-ranking");
             String blizzardEventsTopic = env("KAFKA_BLIZZARD_EVENTS_TOPIC", "noaa.weather.blizzard-events");
+            String rapidChangeEventsTopic = env("KAFKA_RAPID_CHANGE_EVENTS_TOPIC", "noaa.weather.rapid-temperature-change");
             int rainDurationYear = envInt("RAIN_DURATION_YEAR", 2025);
             int frostCountYear = envInt("FROST_COUNT_YEAR", 2025);
             int temperatureRankingYear = envInt("TEMPERATURE_RANKING_YEAR", 2025);
@@ -259,6 +278,9 @@ public final class NoaaWeatherStreamApp {
             int blizzardGraceMinutes = envInt("BLIZZARD_GRACE_MINUTES", 10);
             double blizzardFreezingThresholdCelsius = envDouble("BLIZZARD_FREEZING_THRESHOLD_C", 0.0);
             double blizzardWindThresholdMetersPerSecond = envDouble("BLIZZARD_WIND_THRESHOLD_MPS", 12.0);
+            int rapidChangeYear = envInt("RAPID_CHANGE_YEAR", 2025);
+            int rapidChangeWindowHours = envInt("RAPID_CHANGE_WINDOW_HOURS", 24);
+            int rapidChangeGraceMinutes = envInt("RAPID_CHANGE_GRACE_MINUTES", 10);
 
             return new AppConfig(
                 bootstrapServers,
@@ -270,6 +292,7 @@ public final class NoaaWeatherStreamApp {
                     monthlyFrostDaysTopic,
                     dailyTemperatureRankingTopic,
                     blizzardEventsTopic,
+                    rapidChangeEventsTopic,
                     rainDurationYear,
                     frostCountYear,
                     temperatureRankingYear,
@@ -281,7 +304,10 @@ public final class NoaaWeatherStreamApp {
                     blizzardAdvanceHours,
                     blizzardGraceMinutes,
                     blizzardFreezingThresholdCelsius,
-                    blizzardWindThresholdMetersPerSecond
+                    blizzardWindThresholdMetersPerSecond,
+                    rapidChangeYear,
+                    rapidChangeWindowHours,
+                    rapidChangeGraceMinutes
                 ),
                 inputTopics,
                 streamPatterns,
@@ -290,6 +316,7 @@ public final class NoaaWeatherStreamApp {
                 monthlyFrostDaysTopic,
                 dailyTemperatureRankingTopic,
                 blizzardEventsTopic,
+                rapidChangeEventsTopic,
                 rainDurationYear,
                 frostCountYear,
                 temperatureRankingYear,
@@ -302,6 +329,9 @@ public final class NoaaWeatherStreamApp {
                 blizzardGraceMinutes,
                 blizzardFreezingThresholdCelsius,
                 blizzardWindThresholdMetersPerSecond,
+                rapidChangeYear,
+                rapidChangeWindowHours,
+                rapidChangeGraceMinutes,
                 envBoolean("DASHBOARD_SINK_ENABLED", true),
                 env("DASHBOARD_JDBC_URL", "jdbc:postgresql://localhost:5432/noaa"),
                 env("DASHBOARD_DB_USER", "noaa"),
@@ -327,6 +357,7 @@ public final class NoaaWeatherStreamApp {
             String monthlyFrostDaysTopic,
             String dailyTemperatureRankingTopic,
             String blizzardEventsTopic,
+            String rapidChangeEventsTopic,
             int rainDurationYear,
             int frostCountYear,
             int temperatureRankingYear,
@@ -338,7 +369,10 @@ public final class NoaaWeatherStreamApp {
             int blizzardAdvanceHours,
             int blizzardGraceMinutes,
             double blizzardFreezingThresholdCelsius,
-            double blizzardWindThresholdMetersPerSecond
+            double blizzardWindThresholdMetersPerSecond,
+            int rapidChangeYear,
+            int rapidChangeWindowHours,
+            int rapidChangeGraceMinutes
         ) {
             String configuredApplicationId = env("KAFKA_STREAMS_APPLICATION_ID", "");
             if (!configuredApplicationId.isBlank()) {
@@ -355,6 +389,7 @@ public final class NoaaWeatherStreamApp {
                 monthlyFrostDaysTopic,
                 dailyTemperatureRankingTopic,
                 blizzardEventsTopic,
+                rapidChangeEventsTopic,
                 rainDurationYear,
                 frostCountYear,
                 temperatureRankingYear,
@@ -366,7 +401,10 @@ public final class NoaaWeatherStreamApp {
                 blizzardAdvanceHours,
                 blizzardGraceMinutes,
                 blizzardFreezingThresholdCelsius,
-                blizzardWindThresholdMetersPerSecond
+                blizzardWindThresholdMetersPerSecond,
+                rapidChangeYear,
+                rapidChangeWindowHours,
+                rapidChangeGraceMinutes
             );
         }
 
@@ -389,6 +427,7 @@ public final class NoaaWeatherStreamApp {
                 monthlyFrostDaysTopic,
                 "noaa.weather.daily-temperature-ranking",
                 "noaa.weather.blizzard-events",
+                "noaa.weather.rapid-temperature-change",
                 rainDurationYear,
                 frostCountYear,
                 2025,
@@ -400,7 +439,10 @@ public final class NoaaWeatherStreamApp {
                 1,
                 10,
                 0.0,
-                12.0
+                12.0,
+                2025,
+                24,
+                10
             );
         }
 
@@ -421,6 +463,7 @@ public final class NoaaWeatherStreamApp {
                 "noaa.weather.monthly-frost-days",
                 "noaa.weather.daily-temperature-ranking",
                 "noaa.weather.blizzard-events",
+                "noaa.weather.rapid-temperature-change",
                 rainDurationYear,
                 2025,
                 2025,
@@ -432,7 +475,10 @@ public final class NoaaWeatherStreamApp {
                 1,
                 10,
                 0.0,
-                12.0
+                12.0,
+                2025,
+                24,
+                10
             );
         }
 
@@ -445,6 +491,7 @@ public final class NoaaWeatherStreamApp {
             String monthlyFrostDaysTopic,
             String dailyTemperatureRankingTopic,
             String blizzardEventsTopic,
+            String rapidChangeEventsTopic,
             int rainDurationYear,
             int frostCountYear,
             int temperatureRankingYear,
@@ -456,7 +503,10 @@ public final class NoaaWeatherStreamApp {
             int blizzardAdvanceHours,
             int blizzardGraceMinutes,
             double blizzardFreezingThresholdCelsius,
-            double blizzardWindThresholdMetersPerSecond
+            double blizzardWindThresholdMetersPerSecond,
+            int rapidChangeYear,
+            int rapidChangeWindowHours,
+            int rapidChangeGraceMinutes
         ) {
             String sourceTopics = inputTopics.stream()
                 .sorted()
@@ -470,6 +520,7 @@ public final class NoaaWeatherStreamApp {
                     monthlyFrostDaysTopic,
                     dailyTemperatureRankingTopic,
                     blizzardEventsTopic,
+                    rapidChangeEventsTopic,
                     rainDurationYear,
                     frostCountYear,
                     temperatureRankingYear,
@@ -481,7 +532,10 @@ public final class NoaaWeatherStreamApp {
                     blizzardAdvanceHours,
                     blizzardGraceMinutes,
                     blizzardFreezingThresholdCelsius,
-                    blizzardWindThresholdMetersPerSecond
+                    blizzardWindThresholdMetersPerSecond,
+                    rapidChangeYear,
+                    rapidChangeWindowHours,
+                    rapidChangeGraceMinutes
                 ))
                 .collect(Collectors.joining("-"));
             String replayKey = sourceTopics + "-" + patternTopics;
@@ -500,6 +554,7 @@ public final class NoaaWeatherStreamApp {
             String monthlyFrostDaysTopic,
             String dailyTemperatureRankingTopic,
             String blizzardEventsTopic,
+            String rapidChangeEventsTopic,
             int rainDurationYear,
             int frostCountYear,
             int temperatureRankingYear,
@@ -511,7 +566,10 @@ public final class NoaaWeatherStreamApp {
             int blizzardAdvanceHours,
             int blizzardGraceMinutes,
             double blizzardFreezingThresholdCelsius,
-            double blizzardWindThresholdMetersPerSecond
+            double blizzardWindThresholdMetersPerSecond,
+            int rapidChangeYear,
+            int rapidChangeWindowHours,
+            int rapidChangeGraceMinutes
         ) {
             String key = pattern.configValue() + "-" + outputTopic(
                 pattern,
@@ -519,7 +577,8 @@ public final class NoaaWeatherStreamApp {
                 yearlyRainDurationTopic,
                 monthlyFrostDaysTopic,
                 dailyTemperatureRankingTopic,
-                blizzardEventsTopic
+                blizzardEventsTopic,
+                rapidChangeEventsTopic
             );
             if (pattern == StreamPattern.RAIN_DURATION) {
                 return key + "-" + rainDurationYear;
@@ -540,6 +599,13 @@ public final class NoaaWeatherStreamApp {
                     + "-wt" + decimalReplayKey(blizzardWindThresholdMetersPerSecond)
                     + "-v1";
             }
+            if (pattern == StreamPattern.RAPID_TEMPERATURE_CHANGE) {
+                return key
+                    + "-" + rapidChangeYear
+                    + "-wh" + rapidChangeWindowHours
+                    + "-gm" + rapidChangeGraceMinutes
+                    + "-v1";
+            }
             return key;
         }
 
@@ -549,7 +615,8 @@ public final class NoaaWeatherStreamApp {
             String yearlyRainDurationTopic,
             String monthlyFrostDaysTopic,
             String dailyTemperatureRankingTopic,
-            String blizzardEventsTopic
+            String blizzardEventsTopic,
+            String rapidChangeEventsTopic
         ) {
             return switch (pattern) {
                 case TEMPERATURE -> dailyAverageTopic;
@@ -557,6 +624,7 @@ public final class NoaaWeatherStreamApp {
                 case FROST_DAYS -> monthlyFrostDaysTopic;
                 case TEMPERATURE_RANKING -> dailyTemperatureRankingTopic;
                 case BLIZZARD -> blizzardEventsTopic;
+                case RAPID_TEMPERATURE_CHANGE -> rapidChangeEventsTopic;
             };
         }
 

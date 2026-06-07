@@ -5,6 +5,8 @@ import fhv.streamprocessing.pattern1.temperature.TemperatureAggregate;
 import fhv.streamprocessing.pattern10.blizzard.BlizzardDashboardStore;
 import fhv.streamprocessing.pattern10.blizzard.BlizzardEvent;
 import fhv.streamprocessing.pattern2.frostdays.MonthlyFrostDaysDashboardStore;
+import fhv.streamprocessing.pattern3.rapidchange.RapidTemperatureChangeDashboardStore;
+import fhv.streamprocessing.pattern3.rapidchange.RapidTemperatureChangeEvent;
 import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
 import fhv.streamprocessing.pattern5.rainduration.YearlyRainDurationDashboardStore;
 import fhv.streamprocessing.pattern6.temperatureranking.AnnualPeakTemperatureRankingDashboardStore;
@@ -22,6 +24,7 @@ public class PostgresDashboardSink implements DashboardSink {
     private final MonthlyFrostDaysDashboardStore frostDaysStore;
     private final AnnualPeakTemperatureRankingDashboardStore temperatureRankingStore;
     private final BlizzardDashboardStore blizzardStore;
+    private final RapidTemperatureChangeDashboardStore rapidChangeStore;
 
     public PostgresDashboardSink(String jdbcUrl, String user, String password, String stationHistoryUrl) {
         try {
@@ -35,8 +38,10 @@ public class PostgresDashboardSink implements DashboardSink {
             frostDaysStore = new MonthlyFrostDaysDashboardStore(connection);
             temperatureRankingStore = new AnnualPeakTemperatureRankingDashboardStore(connection);
             blizzardStore = new BlizzardDashboardStore(connection);
+            rapidChangeStore = new RapidTemperatureChangeDashboardStore(connection);
             temperatureRankingStore.clearExistingRows();
             blizzardStore.clearExistingRows();
+            rapidChangeStore.clearExistingRows();
 
             incrementCounter = connection.prepareStatement("""
                 INSERT INTO noaa_stream_counts (kind, total, updated_at)
@@ -123,7 +128,17 @@ public class PostgresDashboardSink implements DashboardSink {
     }
 
     @Override
+    public synchronized void recordRapidTemperatureChange(String stationWindowKey, RapidTemperatureChangeEvent event) {
+        try {
+            rapidChangeStore.record(stationWindowKey, event);
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not persist rapid temperature change for " + stationWindowKey, exception);
+        }
+    }
+
+    @Override
     public synchronized void close() {
+        closeQuietly(rapidChangeStore);
         closeQuietly(blizzardStore);
         closeQuietly(temperatureRankingStore);
         closeQuietly(frostDaysStore);
