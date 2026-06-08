@@ -45,6 +45,9 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.rapid-temperature-change --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.tourism-weather-quality --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.temperature-forecast --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.ais.positions --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.buoy.observations --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.route.recommendations --partitions 1 --replication-factor 1
 
   noaa-producer:
     build: .
@@ -69,6 +72,32 @@ services:
       - producer_state:/app/state
     restart: "no"
 
+  marine-pattern8-producer:
+    build: .
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    command: ["python", "-m", "producer.marine_pattern8_producer"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      KAFKA_AIS_TOPIC: marine.ais.positions
+      KAFKA_BUOY_TOPIC: marine.buoy.observations
+      MARITIME_DATA_YEAR: "2025"
+      MARITIME_START_DATE: ${MARITIME_START_DATE:-2025-06-01}
+      MARITIME_END_DATE: ${MARITIME_END_DATE:-2025-06-01}
+      AIS_BASE_URL: https://coast.noaa.gov/htdata/CMSP/AISDataHandler/2025
+      NDBC_STDMET_BASE_URL: https://www.ndbc.noaa.gov/data/historical/stdmet
+      NDBC_BUOY_STATIONS: 41115:CARIB_PR_WEST:18.376:-67.280,41043:CARIB_PR_NORTH:21.090:-64.864,42060:CARIB_EAST:16.428:-63.210
+      MAX_AIS_RECORDS_PER_DAY: ${MAX_AIS_RECORDS_PER_DAY:-5000}
+      SOURCE_TIMEOUT_SECONDS: "120"
+      EMIT_INTERVAL_SECONDS: "0.0"
+      RESET_STATE: ${RESET_MARINE_STATE:-false}
+      STATE_FILE: /app/state/marine_pattern8_state.json
+      LOG_LEVEL: INFO
+    volumes:
+      - marine_producer_state:/app/state
+    restart: "no"
+
   noaa-stream-client:
     build:
       context: ./patterns
@@ -89,6 +118,9 @@ services:
       KAFKA_RAPID_CHANGE_EVENTS_TOPIC: noaa.weather.rapid-temperature-change
       KAFKA_TOURISM_QUALITY_TOPIC: noaa.weather.tourism-weather-quality
       KAFKA_FORECAST_EVENTS_TOPIC: noaa.weather.temperature-forecast
+      KAFKA_AIS_POSITIONS_TOPIC: marine.ais.positions
+      KAFKA_BUOY_OBSERVATIONS_TOPIC: marine.buoy.observations
+      KAFKA_ROUTE_RECOMMENDATIONS_TOPIC: marine.route.recommendations
       RAIN_DURATION_YEAR: "2025"
       FROST_COUNT_YEAR: "2025"
       TEMPERATURE_RANKING_YEAR: "2025"
@@ -110,6 +142,8 @@ services:
       FORECAST_WINDOW_DAYS: "30"
       FORECAST_ADVANCE_DAYS: "1"
       FORECAST_GRACE_MINUTES: "10"
+      MARITIME_ROUTING_YEAR: "2025"
+      MARITIME_ROUTING_JOIN_WINDOW_MINUTES: "30"
       KAFKA_STREAMS_APPLICATION_ID_PREFIX: noaa-weather-dashboard
       DASHBOARD_SINK_ENABLED: "true"
       DASHBOARD_JDBC_URL: jdbc:postgresql://postgres:5432/noaa
@@ -147,5 +181,6 @@ services:
 volumes:
   kafka_data:
   producer_state:
+  marine_producer_state:
   postgres_data:
   grafana_data:

@@ -7,11 +7,16 @@ import fhv.streamprocessing.pattern4.tourism.TourismWeatherQualityEvent;
 import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
 import fhv.streamprocessing.pattern6.temperatureranking.TemperatureRankingAggregate;
 import fhv.streamprocessing.pattern7.forecasting.TemperatureForecastEvent;
+import fhv.streamprocessing.pattern8.maritime.RouteRecommendationEvent;
 
 public interface DashboardSink extends AutoCloseable {
     void incrementRawRequests();
 
     void incrementParsedRequests();
+
+    void incrementMarineAisRecords();
+
+    void incrementMarineBuoyRecords();
 
     void recordDailyAverage(String stationDayKey, TemperatureAggregate aggregate);
 
@@ -29,6 +34,8 @@ public interface DashboardSink extends AutoCloseable {
 
     void recordTemperatureForecast(String stationForecastKey, TemperatureForecastEvent event);
 
+    void recordRouteRecommendation(String recommendationKey, RouteRecommendationEvent event);
+
     @Override
     void close();
 
@@ -40,6 +47,14 @@ public interface DashboardSink extends AutoCloseable {
 
             @Override
             public void incrementParsedRequests() {
+            }
+
+            @Override
+            public void incrementMarineAisRecords() {
+            }
+
+            @Override
+            public void incrementMarineBuoyRecords() {
             }
 
             @Override
@@ -72,6 +87,10 @@ public interface DashboardSink extends AutoCloseable {
 
             @Override
             public void recordTemperatureForecast(String stationForecastKey, TemperatureForecastEvent event) {
+            }
+
+            @Override
+            public void recordRouteRecommendation(String recommendationKey, RouteRecommendationEvent event) {
             }
 
             @Override

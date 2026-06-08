@@ -182,6 +182,27 @@ $env:STREAM_PATTERN='temperature-forecast'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
 
+## Pattern 8: Schiffs- und Offshore-Routing / Caribbean maritime routing (Mykola)
+thoughts:
+- Implemented as a stream-stream join between an AIS ship-position stream and a buoy sensor stream.
+- The NOAA ISD weather ingest is not enough for this pattern because it describes land/weather stations, not moving vessels and marine buoy measurements. Therefore Pattern 8 adds a separate Python producer for marine demo data and separate Kafka topics: `marine.ais.positions`, `marine.buoy.observations`, and `marine.route.recommendations`.
+- The first implementation covers the Caribbean around Puerto Rico, the US Virgin Islands area, and the eastern Caribbean because AIS and buoy public data is easier to justify for US/Caribbean waters than for the Mediterranean in the 2025 historical context.
+- AIS positions are read from the real NOAA MarineCadastre 2025 daily CSV/Zstandard archive. NDBC buoy observations are read from real historical standard meteorological files, for example stations `41115`, `41043`, and `42060`.
+- The producer derives `seaAreaId` for AIS records from latitude/longitude bounding boxes and assigns NDBC stations to configured sea areas, for example `CARIB_PR_WEST`, `CARIB_PR_NORTH`, and `CARIB_EAST`. Kafka Streams re-keys both streams by this sea area and joins records that are within the configurable time window, default 30 minutes.
+- The stream uses event time from `observedAt`, not processing time. This is important because the demo replays 2025 historical events.
+- Risk decision: wave height and wind speed are combined into a simple 0-100 marine route risk score: `risk = min(100, wave_height_m * 22 + wind_speed_mps * 2.5)`. Risk classes are `LOW`, `MODERATE`, and `HIGH`.
+- The recommendation includes vessel position, wave height, wind speed, risk class, a route instruction, and an ETA adjustment. High risk adds 90 minutes, moderate risk adds 30 minutes, and low risk keeps the ETA unchanged.
+- The dashboard uses the same counter table as Pattern 1. Pattern 8 increments `marine_ais_records`, `marine_buoy_records`, and `marine_route_recommendations`; the Grafana counter shows processed route recommendation records.
+- The AIS archive is large, so the producer has a configurable date range and `MAX_AIS_RECORDS_PER_DAY` limit for local runs. This is still real source data; it just avoids downloading the complete 2025 archive during development.
+- This is the easy version. A more advanced version could derive `seaAreaId` from polygons or grid cells and use finer route recommendation logic.
+- Dashboard: `Pattern 8 - Caribbean Maritime Routing`
+```powershell
+$env:STREAM_PATTERN='maritime-routing'
+docker compose up --build -d kafka postgres grafana noaa-stream-client
+$env:RESET_MARINE_STATE='true'
+docker compose up --build marine-pattern8-producer
+```
+
 
 ## Pattern 10: blizzard detection (Chris)
 

@@ -21,6 +21,11 @@ import fhv.streamprocessing.pattern6.temperatureranking.AnnualPeakTemperatureRan
 import fhv.streamprocessing.pattern6.temperatureranking.TemperatureRankingAggregate;
 import fhv.streamprocessing.pattern7.forecasting.TemperatureForecastEvent;
 import fhv.streamprocessing.pattern7.forecasting.TemperatureForecastTopology;
+import fhv.streamprocessing.pattern8.maritime.AisPositionEvent;
+import fhv.streamprocessing.pattern8.maritime.BuoyObservationEvent;
+import fhv.streamprocessing.pattern8.maritime.MarineObservedAtTimestampExtractor;
+import fhv.streamprocessing.pattern8.maritime.MaritimeRoutingTopology;
+import fhv.streamprocessing.pattern8.maritime.RouteRecommendationEvent;
 import fhv.streamprocessing.serde.JsonSerde;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -184,6 +189,30 @@ public final class NoaaWeatherStreamApp {
                 .to(config.forecastEventsTopic(), Produced.with(Serdes.String(), new JsonSerde<>(TemperatureForecastEvent.class)));
         }
 
+        if (config.runsPattern(StreamPattern.MARITIME_ROUTING)) {
+            KStream<String, AisPositionEvent> aisPositions = builder.stream(
+                config.aisPositionsTopic(),
+                Consumed.with(Serdes.String(), new JsonSerde<>(AisPositionEvent.class))
+                    .withTimestampExtractor(new MarineObservedAtTimestampExtractor())
+            )
+                .peek((key, value) -> dashboardSink.incrementMarineAisRecords());
+            KStream<String, BuoyObservationEvent> buoyObservations = builder.stream(
+                config.buoyObservationsTopic(),
+                Consumed.with(Serdes.String(), new JsonSerde<>(BuoyObservationEvent.class))
+                    .withTimestampExtractor(new MarineObservedAtTimestampExtractor())
+            )
+                .peek((key, value) -> dashboardSink.incrementMarineBuoyRecords());
+
+            MaritimeRoutingTopology.build(
+                aisPositions,
+                buoyObservations,
+                config.maritimeRoutingYear(),
+                config.maritimeRoutingJoinWindowMinutes()
+            )
+                .peek(dashboardSink::recordRouteRecommendation)
+                .to(config.routeRecommendationsTopic(), Produced.with(Serdes.String(), new JsonSerde<>(RouteRecommendationEvent.class)));
+        }
+
         return builder.build();
     }
 
@@ -222,7 +251,8 @@ public final class NoaaWeatherStreamApp {
             config.dashboardJdbcUrl(),
             config.dashboardDbUser(),
             config.dashboardDbPassword(),
-            config.stationHistoryUrl()
+            config.stationHistoryUrl(),
+            config.needsStationMetadata()
         );
     }
 
@@ -234,7 +264,8 @@ public final class NoaaWeatherStreamApp {
         RAPID_TEMPERATURE_CHANGE("rapid-temperature-change"),
         TOURISM_WEATHER_QUALITY("tourism-weather-quality"),
         BLIZZARD("blizzard"),
-        TEMPERATURE_FORECAST("temperature-forecast");
+        TEMPERATURE_FORECAST("temperature-forecast"),
+        MARITIME_ROUTING("maritime-routing");
 
         private final String configValue;
 
@@ -248,7 +279,7 @@ public final class NoaaWeatherStreamApp {
                 .filter(pattern -> pattern.configValue.equals(normalized))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
-                    "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, frost-days, temperature-ranking, rapid-temperature-change, tourism-weather-quality, blizzard, temperature-forecast, all"
+                    "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, frost-days, temperature-ranking, rapid-temperature-change, tourism-weather-quality, blizzard, temperature-forecast, maritime-routing, all"
                 ));
         }
 
@@ -270,6 +301,9 @@ public final class NoaaWeatherStreamApp {
         String rapidChangeEventsTopic,
         String tourismQualityTopic,
         String forecastEventsTopic,
+        String aisPositionsTopic,
+        String buoyObservationsTopic,
+        String routeRecommendationsTopic,
         int rainDurationYear,
         int frostCountYear,
         int temperatureRankingYear,
@@ -291,6 +325,8 @@ public final class NoaaWeatherStreamApp {
         int forecastWindowDays,
         int forecastAdvanceDays,
         int forecastGraceMinutes,
+        int maritimeRoutingYear,
+        int maritimeRoutingJoinWindowMinutes,
         boolean dashboardEnabled,
         String dashboardJdbcUrl,
         String dashboardDbUser,
@@ -309,6 +345,9 @@ public final class NoaaWeatherStreamApp {
             String rapidChangeEventsTopic = env("KAFKA_RAPID_CHANGE_EVENTS_TOPIC", "noaa.weather.rapid-temperature-change");
             String tourismQualityTopic = env("KAFKA_TOURISM_QUALITY_TOPIC", "noaa.weather.tourism-weather-quality");
             String forecastEventsTopic = env("KAFKA_FORECAST_EVENTS_TOPIC", "noaa.weather.temperature-forecast");
+            String aisPositionsTopic = env("KAFKA_AIS_POSITIONS_TOPIC", "marine.ais.positions");
+            String buoyObservationsTopic = env("KAFKA_BUOY_OBSERVATIONS_TOPIC", "marine.buoy.observations");
+            String routeRecommendationsTopic = env("KAFKA_ROUTE_RECOMMENDATIONS_TOPIC", "marine.route.recommendations");
             int rainDurationYear = envInt("RAIN_DURATION_YEAR", 2025);
             int frostCountYear = envInt("FROST_COUNT_YEAR", 2025);
             int temperatureRankingYear = envInt("TEMPERATURE_RANKING_YEAR", 2025);
@@ -330,6 +369,8 @@ public final class NoaaWeatherStreamApp {
             int forecastWindowDays = envInt("FORECAST_WINDOW_DAYS", 30);
             int forecastAdvanceDays = envInt("FORECAST_ADVANCE_DAYS", 1);
             int forecastGraceMinutes = envInt("FORECAST_GRACE_MINUTES", 10);
+            int maritimeRoutingYear = envInt("MARITIME_ROUTING_YEAR", 2025);
+            int maritimeRoutingJoinWindowMinutes = envInt("MARITIME_ROUTING_JOIN_WINDOW_MINUTES", 30);
 
             return new AppConfig(
                 bootstrapServers,
@@ -344,6 +385,7 @@ public final class NoaaWeatherStreamApp {
                     rapidChangeEventsTopic,
                     tourismQualityTopic,
                     forecastEventsTopic,
+                    routeRecommendationsTopic,
                     rainDurationYear,
                     frostCountYear,
                     temperatureRankingYear,
@@ -364,7 +406,9 @@ public final class NoaaWeatherStreamApp {
                     tourismQualityGraceMinutes,
                     forecastWindowDays,
                     forecastAdvanceDays,
-                    forecastGraceMinutes
+                    forecastGraceMinutes,
+                    maritimeRoutingYear,
+                    maritimeRoutingJoinWindowMinutes
                 ),
                 inputTopics,
                 streamPatterns,
@@ -376,6 +420,9 @@ public final class NoaaWeatherStreamApp {
                 rapidChangeEventsTopic,
                 tourismQualityTopic,
                 forecastEventsTopic,
+                aisPositionsTopic,
+                buoyObservationsTopic,
+                routeRecommendationsTopic,
                 rainDurationYear,
                 frostCountYear,
                 temperatureRankingYear,
@@ -397,6 +444,8 @@ public final class NoaaWeatherStreamApp {
                 forecastWindowDays,
                 forecastAdvanceDays,
                 forecastGraceMinutes,
+                maritimeRoutingYear,
+                maritimeRoutingJoinWindowMinutes,
                 envBoolean("DASHBOARD_SINK_ENABLED", true),
                 env("DASHBOARD_JDBC_URL", "jdbc:postgresql://localhost:5432/noaa"),
                 env("DASHBOARD_DB_USER", "noaa"),
@@ -407,6 +456,10 @@ public final class NoaaWeatherStreamApp {
 
         public boolean runsPattern(StreamPattern pattern) {
             return streamPatterns.contains(pattern);
+        }
+
+        public boolean needsStationMetadata() {
+            return !streamPatterns.equals(EnumSet.of(StreamPattern.MARITIME_ROUTING));
         }
 
         private static String env(String name, String defaultValue) {
@@ -425,6 +478,7 @@ public final class NoaaWeatherStreamApp {
             String rapidChangeEventsTopic,
             String tourismQualityTopic,
             String forecastEventsTopic,
+            String routeRecommendationsTopic,
             int rainDurationYear,
             int frostCountYear,
             int temperatureRankingYear,
@@ -445,7 +499,9 @@ public final class NoaaWeatherStreamApp {
             int tourismQualityGraceMinutes,
             int forecastWindowDays,
             int forecastAdvanceDays,
-            int forecastGraceMinutes
+            int forecastGraceMinutes,
+            int maritimeRoutingYear,
+            int maritimeRoutingJoinWindowMinutes
         ) {
             String configuredApplicationId = env("KAFKA_STREAMS_APPLICATION_ID", "");
             if (!configuredApplicationId.isBlank()) {
@@ -465,6 +521,7 @@ public final class NoaaWeatherStreamApp {
                 rapidChangeEventsTopic,
                 tourismQualityTopic,
                 forecastEventsTopic,
+                routeRecommendationsTopic,
                 rainDurationYear,
                 frostCountYear,
                 temperatureRankingYear,
@@ -485,7 +542,9 @@ public final class NoaaWeatherStreamApp {
                 tourismQualityGraceMinutes,
                 forecastWindowDays,
                 forecastAdvanceDays,
-                forecastGraceMinutes
+                forecastGraceMinutes,
+                maritimeRoutingYear,
+                maritimeRoutingJoinWindowMinutes
             );
         }
 
@@ -511,6 +570,7 @@ public final class NoaaWeatherStreamApp {
                 "noaa.weather.rapid-temperature-change",
                 "noaa.weather.tourism-weather-quality",
                 "noaa.weather.temperature-forecast",
+                "marine.route.recommendations",
                 rainDurationYear,
                 frostCountYear,
                 2025,
@@ -531,7 +591,9 @@ public final class NoaaWeatherStreamApp {
                 10,
                 30,
                 1,
-                10
+                10,
+                2025,
+                30
             );
         }
 
@@ -555,6 +617,7 @@ public final class NoaaWeatherStreamApp {
                 "noaa.weather.rapid-temperature-change",
                 "noaa.weather.tourism-weather-quality",
                 "noaa.weather.temperature-forecast",
+                "marine.route.recommendations",
                 rainDurationYear,
                 2025,
                 2025,
@@ -575,7 +638,9 @@ public final class NoaaWeatherStreamApp {
                 10,
                 30,
                 1,
-                10
+                10,
+                2025,
+                30
             );
         }
 
@@ -621,6 +686,7 @@ public final class NoaaWeatherStreamApp {
                 rapidChangeEventsTopic,
                 "noaa.weather.tourism-weather-quality",
                 forecastEventsTopic,
+                "marine.route.recommendations",
                 rainDurationYear,
                 frostCountYear,
                 temperatureRankingYear,
@@ -641,7 +707,9 @@ public final class NoaaWeatherStreamApp {
                 10,
                 forecastWindowDays,
                 forecastAdvanceDays,
-                forecastGraceMinutes
+                forecastGraceMinutes,
+                2025,
+                30
             );
         }
 
@@ -657,6 +725,7 @@ public final class NoaaWeatherStreamApp {
             String rapidChangeEventsTopic,
             String tourismQualityTopic,
             String forecastEventsTopic,
+            String routeRecommendationsTopic,
             int rainDurationYear,
             int frostCountYear,
             int temperatureRankingYear,
@@ -677,7 +746,9 @@ public final class NoaaWeatherStreamApp {
             int tourismQualityGraceMinutes,
             int forecastWindowDays,
             int forecastAdvanceDays,
-            int forecastGraceMinutes
+            int forecastGraceMinutes,
+            int maritimeRoutingYear,
+            int maritimeRoutingJoinWindowMinutes
         ) {
             String sourceTopics = inputTopics.stream()
                 .sorted()
@@ -694,6 +765,7 @@ public final class NoaaWeatherStreamApp {
                     rapidChangeEventsTopic,
                     tourismQualityTopic,
                     forecastEventsTopic,
+                    routeRecommendationsTopic,
                     rainDurationYear,
                     frostCountYear,
                     temperatureRankingYear,
@@ -714,7 +786,9 @@ public final class NoaaWeatherStreamApp {
                     tourismQualityGraceMinutes,
                     forecastWindowDays,
                     forecastAdvanceDays,
-                    forecastGraceMinutes
+                    forecastGraceMinutes,
+                    maritimeRoutingYear,
+                    maritimeRoutingJoinWindowMinutes
                 ))
                 .collect(Collectors.joining("-"));
             String replayKey = sourceTopics + "-" + patternTopics;
@@ -736,6 +810,7 @@ public final class NoaaWeatherStreamApp {
             String rapidChangeEventsTopic,
             String tourismQualityTopic,
             String forecastEventsTopic,
+            String routeRecommendationsTopic,
             int rainDurationYear,
             int frostCountYear,
             int temperatureRankingYear,
@@ -756,7 +831,9 @@ public final class NoaaWeatherStreamApp {
             int tourismQualityGraceMinutes,
             int forecastWindowDays,
             int forecastAdvanceDays,
-            int forecastGraceMinutes
+            int forecastGraceMinutes,
+            int maritimeRoutingYear,
+            int maritimeRoutingJoinWindowMinutes
         ) {
             String key = pattern.configValue() + "-" + outputTopic(
                 pattern,
@@ -767,7 +844,8 @@ public final class NoaaWeatherStreamApp {
                 blizzardEventsTopic,
                 rapidChangeEventsTopic,
                 tourismQualityTopic,
-                forecastEventsTopic
+                forecastEventsTopic,
+                routeRecommendationsTopic
             );
             if (pattern == StreamPattern.RAIN_DURATION) {
                 return key + "-" + rainDurationYear;
@@ -809,6 +887,12 @@ public final class NoaaWeatherStreamApp {
                     + "-gm" + tourismQualityGraceMinutes
                     + "-metadata-region-v1";
             }
+            if (pattern == StreamPattern.MARITIME_ROUTING) {
+                return key
+                    + "-" + maritimeRoutingYear
+                    + "-jwm" + maritimeRoutingJoinWindowMinutes
+                    + "-caribbean-real-sources-counters-v1";
+            }
             return key;
         }
 
@@ -821,7 +905,8 @@ public final class NoaaWeatherStreamApp {
             String blizzardEventsTopic,
             String rapidChangeEventsTopic,
             String tourismQualityTopic,
-            String forecastEventsTopic
+            String forecastEventsTopic,
+            String routeRecommendationsTopic
         ) {
             return switch (pattern) {
                 case TEMPERATURE -> dailyAverageTopic;
@@ -832,6 +917,7 @@ public final class NoaaWeatherStreamApp {
                 case RAPID_TEMPERATURE_CHANGE -> rapidChangeEventsTopic;
                 case TOURISM_WEATHER_QUALITY -> tourismQualityTopic;
                 case TEMPERATURE_FORECAST -> forecastEventsTopic;
+                case MARITIME_ROUTING -> routeRecommendationsTopic;
             };
         }
 

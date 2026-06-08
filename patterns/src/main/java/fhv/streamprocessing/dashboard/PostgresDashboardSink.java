@@ -15,6 +15,8 @@ import fhv.streamprocessing.pattern6.temperatureranking.AnnualPeakTemperatureRan
 import fhv.streamprocessing.pattern6.temperatureranking.TemperatureRankingAggregate;
 import fhv.streamprocessing.pattern7.forecasting.TemperatureForecastDashboardStore;
 import fhv.streamprocessing.pattern7.forecasting.TemperatureForecastEvent;
+import fhv.streamprocessing.pattern8.maritime.RouteRecommendationDashboardStore;
+import fhv.streamprocessing.pattern8.maritime.RouteRecommendationEvent;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -31,13 +33,26 @@ public class PostgresDashboardSink implements DashboardSink {
     private final RapidTemperatureChangeDashboardStore rapidChangeStore;
     private final TourismWeatherQualityDashboardStore tourismQualityStore;
     private final TemperatureForecastDashboardStore forecastStore;
+    private final RouteRecommendationDashboardStore routeRecommendationStore;
 
     public PostgresDashboardSink(String jdbcUrl, String user, String password, String stationHistoryUrl) {
+        this(jdbcUrl, user, password, stationHistoryUrl, true);
+    }
+
+    public PostgresDashboardSink(
+        String jdbcUrl,
+        String user,
+        String password,
+        String stationHistoryUrl,
+        boolean loadStationMetadata
+    ) {
         try {
             connection = connectWithRetry(jdbcUrl, user, password);
             connection.setAutoCommit(true);
             createCommonTables();
-            StationMetadataLoader.loadInto(connection, stationHistoryUrl);
+            if (loadStationMetadata) {
+                StationMetadataLoader.loadInto(connection, stationHistoryUrl);
+            }
 
             dailyAverageStore = new DailyAverageTemperatureDashboardStore(connection);
             rainDurationStore = new YearlyRainDurationDashboardStore(connection);
@@ -47,12 +62,14 @@ public class PostgresDashboardSink implements DashboardSink {
             rapidChangeStore = new RapidTemperatureChangeDashboardStore(connection);
             tourismQualityStore = new TourismWeatherQualityDashboardStore(connection);
             forecastStore = new TemperatureForecastDashboardStore(connection);
+            routeRecommendationStore = new RouteRecommendationDashboardStore(connection);
 
             temperatureRankingStore.clearExistingRows();
             blizzardStore.clearExistingRows();
             rapidChangeStore.clearExistingRows();
             tourismQualityStore.clearExistingRows();
             forecastStore.clearExistingRows();
+            routeRecommendationStore.clearExistingRows();
 
             incrementCounter = connection.prepareStatement("""
                 INSERT INTO noaa_stream_counts (kind, total, updated_at)
@@ -91,6 +108,16 @@ public class PostgresDashboardSink implements DashboardSink {
     @Override
     public synchronized void incrementParsedRequests() {
         incrementCounter("parsed");
+    }
+
+    @Override
+    public synchronized void incrementMarineAisRecords() {
+        incrementCounter("marine_ais_records");
+    }
+
+    @Override
+    public synchronized void incrementMarineBuoyRecords() {
+        incrementCounter("marine_buoy_records");
     }
 
     @Override
@@ -166,7 +193,18 @@ public class PostgresDashboardSink implements DashboardSink {
     }
 
     @Override
+    public synchronized void recordRouteRecommendation(String recommendationKey, RouteRecommendationEvent event) {
+        try {
+            routeRecommendationStore.record(recommendationKey, event);
+            incrementCounter("marine_route_recommendations");
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not persist route recommendation for " + recommendationKey, exception);
+        }
+    }
+
+    @Override
     public synchronized void close() {
+        closeQuietly(routeRecommendationStore);
         closeQuietly(forecastStore);
         closeQuietly(tourismQualityStore);
         closeQuietly(rapidChangeStore);
