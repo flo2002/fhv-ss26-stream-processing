@@ -45,6 +45,7 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.rapid-temperature-change --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.tourism-weather-quality --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.temperature-forecast --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.wet-period-events --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.ais.positions --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.buoy.observations --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.route.recommendations --partitions 1 --replication-factor 1
@@ -118,6 +119,7 @@ services:
       KAFKA_RAPID_CHANGE_EVENTS_TOPIC: noaa.weather.rapid-temperature-change
       KAFKA_TOURISM_QUALITY_TOPIC: noaa.weather.tourism-weather-quality
       KAFKA_FORECAST_EVENTS_TOPIC: noaa.weather.temperature-forecast
+      KAFKA_WET_PERIOD_EVENTS_TOPIC: noaa.weather.wet-period-events
       KAFKA_AIS_POSITIONS_TOPIC: marine.ais.positions
       KAFKA_BUOY_OBSERVATIONS_TOPIC: marine.buoy.observations
       KAFKA_ROUTE_RECOMMENDATIONS_TOPIC: marine.route.recommendations
@@ -142,6 +144,7 @@ services:
       FORECAST_WINDOW_DAYS: "30"
       FORECAST_ADVANCE_DAYS: "1"
       FORECAST_GRACE_MINUTES: "10"
+      WET_DRY_PERIOD_YEAR: "2025"
       MARITIME_ROUTING_YEAR: "2025"
       MARITIME_ROUTING_JOIN_WINDOW_MINUTES: "30"
       KAFKA_STREAMS_APPLICATION_ID_PREFIX: noaa-weather-dashboard

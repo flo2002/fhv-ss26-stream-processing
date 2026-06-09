@@ -8,6 +8,7 @@ import fhv.streamprocessing.pattern5.rainduration.RainDurationAggregate;
 import fhv.streamprocessing.pattern6.temperatureranking.TemperatureRankingAggregate;
 import fhv.streamprocessing.pattern7.forecasting.TemperatureForecastEvent;
 import fhv.streamprocessing.pattern8.maritime.RouteRecommendationEvent;
+import fhv.streamprocessing.pattern9.wetdry.WetPeriodEvent;
 
 public interface DashboardSink extends AutoCloseable {
     void incrementRawRequests();
@@ -35,6 +36,8 @@ public interface DashboardSink extends AutoCloseable {
     void recordTemperatureForecast(String stationForecastKey, TemperatureForecastEvent event);
 
     void recordRouteRecommendation(String recommendationKey, RouteRecommendationEvent event);
+
+    void recordWetPeriod(String wetPeriodKey, WetPeriodEvent event);
 
     @Override
     void close();
@@ -91,6 +94,10 @@ public interface DashboardSink extends AutoCloseable {
 
             @Override
             public void recordRouteRecommendation(String recommendationKey, RouteRecommendationEvent event) {
+            }
+
+            @Override
+            public void recordWetPeriod(String wetPeriodKey, WetPeriodEvent event) {
             }
 
             @Override

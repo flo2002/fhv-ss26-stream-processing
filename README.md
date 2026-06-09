@@ -203,6 +203,21 @@ $env:RESET_MARINE_STATE='true'
 docker compose up --build marine-pattern8-producer
 ```
 
+## Pattern 9: wet/dry period detection (Mykola)
+thoughts:
+- Implemented as a state machine over the NOAA observation stream.
+- A station enters a wet state when the first observation with `rainDurationHours > 0` arrives.
+- The wet state remains open while additional precipitation observations arrive.
+- The first dry observation, where precipitation is absent (`rainDurationHours` is missing or not greater than zero), closes the period and emits one `WetPeriodEvent`.
+- The event contains station id, period start, period end, duration in minutes, and the number of precipitation observations inside the period.
+- Duration decision: the period starts at the first wet reading and ends at the dry reading that closes it. This matches the state-machine wording: the period remains open until absence is observed.
+- Kafka Streams uses a local state store keyed by station id, so every station can have an independent open wet period.
+- Dashboard: `NOAA Wet/Dry Period Detection 2025`
+```powershell
+$env:STREAM_PATTERN='wet-dry-period'
+docker compose up --build -d --force-recreate noaa-stream-client
+```
+
 
 ## Pattern 10: blizzard detection (Chris)
 
