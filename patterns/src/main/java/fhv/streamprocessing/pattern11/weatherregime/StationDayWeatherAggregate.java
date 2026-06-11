@@ -81,7 +81,7 @@ public class StationDayWeatherAggregate {
     }
 
     public boolean hasEnoughSignal() {
-        return temperatureCount > 0 && (windSpeedCount > 0 || skyClarityCount > 0 || precipitationObservationCount > 0);
+        return temperatureCount > 0 || windSpeedCount > 0 || skyClarityCount > 0 || precipitationObservationCount > 0;
     }
 
     public WeatherRegimeFeatureVector toFeatureVector() {

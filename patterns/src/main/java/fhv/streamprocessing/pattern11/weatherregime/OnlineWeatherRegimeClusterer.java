@@ -8,7 +8,7 @@ import moa.clusterers.clustream.Clustream;
 public class OnlineWeatherRegimeClusterer {
     private static final String[] LABELS = {
         "cold_windy_wet",
-        "cold_clear_calm",
+        "cold_windy_clear",
         "mild_wet",
         "mild_clear_breezy",
         "hot_dry_clear",

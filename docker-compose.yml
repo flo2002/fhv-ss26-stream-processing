@@ -31,25 +31,31 @@ services:
       - /bin/sh
       - -c
       - |
+        run_kafka() {
+          "$@" >/tmp/kafka-init-stdout.log 2>/tmp/kafka-init-stderr.log
+          status=$$?
+          cat /tmp/kafka-init-stdout.log /tmp/kafka-init-stderr.log | grep -v -e "WARNING: Due to limitations in metric names" -e "topics with a period" -e "To avoid issues it is best to use either" || true
+          return $$status
+        }
         until /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --list >/dev/null 2>&1; do
           echo "waiting for kafka"
           sleep 2
         done
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.raw --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:19092 --alter --entity-type topics --entity-name noaa.weather.raw --add-config retention.ms=-1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.daily-average-temperature --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.yearly-average-rain-duration --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.monthly-frost-days --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.daily-temperature-ranking --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.blizzard-events --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.rapid-temperature-change --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.tourism-weather-quality --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.temperature-forecast --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.wet-period-events --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.weather-regimes --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.ais.positions --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.buoy.observations --partitions 1 --replication-factor 1
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.route.recommendations --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.raw --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-configs.sh --bootstrap-server kafka:19092 --alter --entity-type topics --entity-name noaa.weather.raw --add-config retention.ms=-1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.daily-average-temperature --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.yearly-average-rain-duration --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.monthly-frost-days --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.daily-temperature-ranking --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.blizzard-events --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.rapid-temperature-change --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.tourism-weather-quality --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.temperature-forecast --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.wet-period-events --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.weather-regimes --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.ais.positions --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.buoy.observations --partitions 1 --replication-factor 1
+        run_kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.route.recommendations --partitions 1 --replication-factor 1
 
   noaa-producer:
     build: .
@@ -150,6 +156,9 @@ services:
       FORECAST_ADVANCE_DAYS: "1"
       FORECAST_GRACE_MINUTES: "10"
       WET_DRY_PERIOD_YEAR: "2025"
+      WEATHER_REGIME_YEAR: "2025"
+      WEATHER_REGIME_CLUSTER_COUNT: "6"
+      WEATHER_REGIME_HORIZON: "10000"
       MARITIME_ROUTING_YEAR: "2025"
       MARITIME_ROUTING_JOIN_WINDOW_MINUTES: "30"
       KAFKA_STREAMS_APPLICATION_ID_PREFIX: noaa-weather-dashboard

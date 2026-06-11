@@ -179,6 +179,169 @@
       ],
       "title": "Latest Station-Day Assignments",
       "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "noaa-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "label": "auto",
+            "lineWidth": 0,
+            "pointSize": {
+              "fixed": 5,
+              "max": 12,
+              "min": 2
+            },
+            "show": "points"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cold_windy_wet"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cold_windy_clear"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "cyan",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mild_wet"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "mild_clear_breezy"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "hot_dry_clear"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "volatile_windy"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "id": 5,
+      "options": {
+        "dims": {
+          "exclude": [
+            "station",
+            "station_id",
+            "observation_date",
+            "cluster_label"
+          ],
+          "frame": 0,
+          "x": "avg_temperature_celsius"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true
+        },
+        "series": [],
+        "seriesMapping": "auto",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "noaa-postgres"
+          },
+          "format": "table",
+          "rawSql": "SELECT\n  COALESCE(m.station_location, r.station_id) AS station,\n  r.station_id,\n  r.observation_date,\n  r.cluster_label,\n  r.avg_temperature_celsius,\n  CASE WHEN r.cluster_label = 'cold_windy_wet' THEN r.avg_wind_speed_mps END AS cold_windy_wet,\n  CASE WHEN r.cluster_label = 'cold_windy_clear' THEN r.avg_wind_speed_mps END AS cold_windy_clear,\n  CASE WHEN r.cluster_label = 'mild_wet' THEN r.avg_wind_speed_mps END AS mild_wet,\n  CASE WHEN r.cluster_label = 'mild_clear_breezy' THEN r.avg_wind_speed_mps END AS mild_clear_breezy,\n  CASE WHEN r.cluster_label = 'hot_dry_clear' THEN r.avg_wind_speed_mps END AS hot_dry_clear,\n  CASE WHEN r.cluster_label = 'volatile_windy' THEN r.avg_wind_speed_mps END AS volatile_windy\nFROM noaa_weather_regimes r\nLEFT JOIN noaa_station_metadata m ON m.station_id = r.station_id\nWHERE r.observation_date BETWEEN DATE '2025-01-01' AND DATE '2025-12-31'\nORDER BY r.avg_temperature_celsius, r.avg_wind_speed_mps\nLIMIT 5000;",
+          "refId": "A"
+        }
+      ],
+      "title": "Weather Regime Point Clouds",
+      "type": "xychart"
     }
   ],
   "refresh": "30s",

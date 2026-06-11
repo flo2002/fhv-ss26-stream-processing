@@ -82,6 +82,49 @@ class WeatherRegimeTopologyTest {
         }
     }
 
+    @Test
+    void clustersStationDaysWithOnlyOneUsableFeature() {
+        StreamsBuilder builder = new StreamsBuilder();
+        WeatherRegimeTopology.build(
+            builder.stream("observations", Consumed.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class))),
+            2025,
+            6,
+            10_000
+        )
+            .to("weather-regimes", Produced.with(Serdes.String(), new JsonSerde<>(WeatherRegimeEvent.class)));
+
+        Properties properties = new Properties();
+        properties.put(StreamsConfig.APPLICATION_ID_CONFIG, "weather-regime-sparse-feature-test");
+        properties.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "dummy:9092");
+
+        try (TopologyTestDriver driver = new TopologyTestDriver(builder.build(), properties)) {
+            TestInputTopic<String, NoaaObservation> inputTopic = driver.createInputTopic(
+                "observations",
+                new StringSerializer(),
+                new JsonSerde<>(NoaaObservation.class).serializer()
+            );
+            TestOutputTopic<String, WeatherRegimeEvent> outputTopic = driver.createOutputTopic(
+                "weather-regimes",
+                new StringDeserializer(),
+                new JsonSerde<>(WeatherRegimeEvent.class).deserializer()
+            );
+
+            inputTopic.pipeInput(
+                "record-1",
+                observation("010010-99999", LocalDateTime.of(2025, 2, 1, 0, 0), 4.0, null, null, null),
+                Instant.parse("2025-02-01T00:00:00Z")
+            );
+
+            Map<String, WeatherRegimeEvent> latestEvents = new LinkedHashMap<>();
+            outputTopic.readKeyValuesToList().forEach(record -> latestEvents.put(record.key, record.value));
+
+            WeatherRegimeEvent event = latestEvents.get("010010-99999|2025-02-01");
+            assertEquals("010010-99999", event.stationId());
+            assertEquals(4.0, event.avgTemperatureCelsius());
+            assertEquals(1L, event.observationCount());
+        }
+    }
+
     private static NoaaObservation observation(
         String stationId,
         LocalDateTime observedAt,

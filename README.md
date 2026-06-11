@@ -343,8 +343,10 @@ thoughts:
   5. hot_dry_clear
   6. volatile_windy
 
-
 ```powershell
 $env:STREAM_PATTERN='weather-regimes'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
+
+![Pattern 11: Weather Regime Clustering](./assets/Screenshot%202026-06-11%20174357.png)
+![Pattern 11: Weather Regime Clustering cont.](./assets/Screenshot%202026-06-11%20174405.png)

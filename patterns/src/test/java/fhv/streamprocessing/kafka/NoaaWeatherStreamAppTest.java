@@ -142,6 +142,22 @@ class NoaaWeatherStreamAppTest {
     }
 
     @Test
+    void generatedApplicationIdStaysShortEnoughWhenAllPatternsRunTogether() {
+        String applicationId = testGeneratedApplicationId(
+            "noaa-weather-dashboard",
+            List.of("noaa.weather.raw"),
+            EnumSet.allOf(NoaaWeatherStreamApp.StreamPattern.class),
+            "noaa.weather.daily-average-temperature",
+            "noaa.weather.yearly-average-rain-duration",
+            "noaa.weather.monthly-frost-days",
+            2025,
+            2025
+        );
+
+        assertTrue(applicationId.length() < 80);
+    }
+
+    @Test
     void generatedApplicationIdChangesWhenFrostOutputTopicChanges() {
         String original = testGeneratedApplicationId(
             "noaa-weather-dashboard",

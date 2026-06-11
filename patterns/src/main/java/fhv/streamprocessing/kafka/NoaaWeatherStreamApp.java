@@ -56,6 +56,8 @@ import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Produced;
 
 public final class NoaaWeatherStreamApp {
+    private static final int MAX_GENERATED_APPLICATION_ID_LENGTH = 72;
+
     private NoaaWeatherStreamApp() {
     }
 
@@ -887,7 +889,12 @@ public final class NoaaWeatherStreamApp {
                 .map(StreamPattern::configValue)
                 .collect(Collectors.joining("-"));
 
-            return sanitizeApplicationId(prefix + "-" + patternNames + "-" + shortHash(replayKey));
+            String replayHash = shortHash(replayKey);
+            String applicationId = sanitizeApplicationId(prefix + "-" + patternNames + "-" + replayHash);
+            if (applicationId.length() <= MAX_GENERATED_APPLICATION_ID_LENGTH) {
+                return applicationId;
+            }
+            return sanitizeApplicationId(prefix + "-" + shortHash(patternNames) + "-" + replayHash);
         }
 
         private static String patternReplayKey(
