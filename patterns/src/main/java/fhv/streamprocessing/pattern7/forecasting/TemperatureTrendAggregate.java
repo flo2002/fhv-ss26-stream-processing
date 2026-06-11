@@ -10,6 +10,7 @@ public class TemperatureTrendAggregate implements Serializable {
     private double sumXY;
     private double sumX2;
     private double firstTimestamp;
+    private double lastTimestamp;
 
     public TemperatureTrendAggregate add(NoaaObservation observation) {
         if (observation.temperatureCelsius() == null || observation.observedAt() == null) {
@@ -21,6 +22,9 @@ public class TemperatureTrendAggregate implements Serializable {
 
         if (count == 0) {
             firstTimestamp = x;
+            lastTimestamp = x;
+        } else {
+            lastTimestamp = Math.max(lastTimestamp, x);
         }
 
         // Relative x to keep numbers manageable
@@ -106,5 +110,23 @@ public class TemperatureTrendAggregate implements Serializable {
 
     public void setFirstTimestamp(double firstTimestamp) {
         this.firstTimestamp = firstTimestamp;
+    }
+
+    public double getLastTimestamp() {
+        return lastTimestamp;
+    }
+
+    public void setLastTimestamp(double lastTimestamp) {
+        this.lastTimestamp = lastTimestamp;
+    }
+
+    /** Latest observation time relative to the regression origin (firstTimestamp). */
+    public double getLastRelativeX() {
+        return lastTimestamp - firstTimestamp;
+    }
+
+    /** Fitted regression value at the latest observation, i.e. the "current" trend value. */
+    public double getValueAtLastObservation() {
+        return getIntercept() + getSlope() * getLastRelativeX();
     }
 }

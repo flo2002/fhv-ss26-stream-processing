@@ -73,13 +73,15 @@ class TemperatureForecastTopologyTest {
             // Slope should be 1 degree per hour = 1/3600 per second
             assertEquals(1.0 / 3600.0, event.slopePerSecond(), 0.000001);
             assertEquals(11.0, event.currentAverage(), 0.000001);
-            // Forecast for next 24h = currentAverage + slope * 86400 = 11 + (1/3600 * 86400) = 11 + 24 = 35
-            // Wait, linear regression with points (0, 10), (3600, 11), (7200, 12)
+            // Linear regression with points (0, 10), (3600, 11), (7200, 12)
             // x_mean = 3600, y_mean = 11
             // sum((x-x_mean)(y-y_mean)) = (-3600*-1) + (0*0) + (3600*1) = 7200
             // sum((x-x_mean)^2) = (-3600)^2 + 0^2 + 3600^2 = 2 * 3600^2
-            // slope = 7200 / (2 * 3600^2) = 1 / 3600
-            assertEquals(35.0, event.forecastNext24h(), 0.000001);
+            // slope = 7200 / (2 * 3600^2) = 1 / 3600  (i.e. 1 C/h)
+            // Forecast is anchored at the latest observation, not the window mean:
+            // fitted value at the latest reading (t=7200) = 12.0, then +24h of trend:
+            // 12 + (1/3600 * 86400) = 12 + 24 = 36
+            assertEquals(36.0, event.forecastNext24h(), 0.000001);
         }
     }
 

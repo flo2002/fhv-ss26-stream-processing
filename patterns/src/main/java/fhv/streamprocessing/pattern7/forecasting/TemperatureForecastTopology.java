@@ -45,7 +45,10 @@ public final class TemperatureForecastTopology {
 
                 double slope = aggregate.getSlope();
                 double currentAverage = aggregate.getLatestAverage();
-                double forecastNext24h = currentAverage + (slope * 86400);
+                // Anchor the forecast at the fitted value of the latest observation ("now"),
+                // then project the trend forward 24h, instead of anchoring at the window mean.
+                double valueAtLastObservation = aggregate.getValueAtLastObservation();
+                double forecastNext24h = valueAtLastObservation + (slope * 86400);
 
                 TemperatureForecastEvent event = new TemperatureForecastEvent(
                     windowedStationId.key(),

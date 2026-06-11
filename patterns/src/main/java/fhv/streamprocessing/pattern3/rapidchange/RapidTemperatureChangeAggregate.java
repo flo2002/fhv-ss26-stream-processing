@@ -8,8 +8,8 @@ public class RapidTemperatureChangeAggregate {
     private Double lastTemperature;
     private OffsetDateTime lastObservedAt;
     
-    private double minRateOfChange = Double.POSITIVE_INFINITY;
-    private double maxRateOfChange = Double.NEGATIVE_INFINITY;
+    private double minRateOfChange = 0.0;
+    private double maxRateOfChange = 0.0;
     private double sumRateOfChange = 0.0;
     private long rateOfChangeCount = 0;
 
@@ -28,9 +28,14 @@ public class RapidTemperatureChangeAggregate {
             if (!deltaTime.isZero() && !deltaTime.isNegative()) {
                 double hours = deltaTime.toMillis() / 3600000.0;
                 double rate = deltaTemp / hours;
-                
-                minRateOfChange = Math.min(minRateOfChange, rate);
-                maxRateOfChange = Math.max(maxRateOfChange, rate);
+
+                if (rateOfChangeCount == 0) {
+                    minRateOfChange = rate;
+                    maxRateOfChange = rate;
+                } else {
+                    minRateOfChange = Math.min(minRateOfChange, rate);
+                    maxRateOfChange = Math.max(maxRateOfChange, rate);
+                }
                 sumRateOfChange += rate;
                 rateOfChangeCount++;
             }
@@ -59,7 +64,7 @@ public class RapidTemperatureChangeAggregate {
     }
 
     public double getMinRateOfChange() {
-        return Double.isInfinite(minRateOfChange) ? 0.0 : minRateOfChange;
+        return minRateOfChange;
     }
 
     public void setMinRateOfChange(double minRateOfChange) {
@@ -67,7 +72,7 @@ public class RapidTemperatureChangeAggregate {
     }
 
     public double getMaxRateOfChange() {
-        return Double.isInfinite(maxRateOfChange) ? 0.0 : maxRateOfChange;
+        return maxRateOfChange;
     }
 
     public void setMaxRateOfChange(double maxRateOfChange) {
