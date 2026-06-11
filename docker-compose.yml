@@ -67,6 +67,9 @@ services:
       RUN_ONCE: "true"
       MAX_FILES_PER_POLL: "0"
       MAX_FILE_BYTES: "0"
+      FTP_TIMEOUT_SECONDS: "120"
+      FTP_DOWNLOAD_RETRIES: "5"
+      FTP_DOWNLOAD_RETRY_BACKOFF_SECONDS: "5"
       STATE_FILE: /app/state/noaa_ftp_state.json
       LOG_LEVEL: INFO
     volumes:

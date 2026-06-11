@@ -223,6 +223,39 @@ def retrieve_bytes(ftp: ftplib.FTP, remote_path: str, max_bytes: int) -> bytes:
     return b"".join(chunks)
 
 
+def retrieve_bytes_with_retries(
+    host: str,
+    user: str,
+    password: str,
+    timeout: int,
+    remote_path: str,
+    max_bytes: int,
+    attempts: int,
+    backoff_seconds: float,
+) -> bytes:
+    last_error: Optional[BaseException] = None
+    for attempt in range(1, max(1, attempts) + 1):
+        try:
+            with connect_ftp(host, user, password, timeout) as ftp:
+                return retrieve_bytes(ftp, remote_path, max_bytes)
+        except (ftplib.Error, OSError, TimeoutError) as exc:
+            last_error = exc
+            if attempt >= max(1, attempts) or STOP:
+                break
+            sleep_seconds = backoff_seconds * attempt
+            LOGGER.warning(
+                "download failed for %s, retrying in %.1fs (%s/%s): %s",
+                remote_path,
+                sleep_seconds,
+                attempt,
+                max(1, attempts),
+                exc,
+            )
+            time.sleep(sleep_seconds)
+
+    raise RuntimeError(f"failed to download {remote_path} after {max(1, attempts)} attempts") from last_error
+
+
 def decode_historical_records(remote_file: RemoteFile, payload: bytes) -> List[str]:
     if remote_file.name.endswith(".gz"):
         payload = gzip.decompress(payload)
@@ -301,6 +334,8 @@ def poll_once(
     historical_year: str,
     state_path: Path,
     progress_interval_records: int,
+    download_retries: int,
+    download_retry_backoff_seconds: float,
 ) -> int:
     host, user, password, timeout = ftp_settings
     sent = 0
@@ -315,8 +350,16 @@ def poll_once(
             break
 
         LOGGER.info("downloading file %s/%s: %s", index, len(pending), remote_file.path)
-        with connect_ftp(host, user, password, timeout) as ftp:
-            payload = retrieve_bytes(ftp, remote_file.path, max_bytes)
+        payload = retrieve_bytes_with_retries(
+            host,
+            user,
+            password,
+            timeout,
+            remote_file.path,
+            max_bytes,
+            download_retries,
+            download_retry_backoff_seconds,
+        )
 
         records = decode_historical_records(remote_file, payload)
         already_sent = resume_record_number(remote_file, state)
@@ -398,6 +441,8 @@ def main() -> None:
     max_files = env_int("MAX_FILES_PER_POLL", 0)
     max_bytes = env_int("MAX_FILE_BYTES", 0)
     progress_interval_records = env_int("PROGRESS_INTERVAL_RECORDS", 1000)
+    download_retries = env_int("FTP_DOWNLOAD_RETRIES", 5)
+    download_retry_backoff_seconds = env_float("FTP_DOWNLOAD_RETRY_BACKOFF_SECONDS", 5.0)
     run_once = env_bool("RUN_ONCE", True)
     state_path = Path(os.getenv("STATE_FILE", "/app/state/noaa_ftp_state.json"))
     kafka_bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
@@ -432,6 +477,8 @@ def main() -> None:
                 historical_year=historical_year,
                 state_path=state_path,
                 progress_interval_records=progress_interval_records,
+                download_retries=download_retries,
+                download_retry_backoff_seconds=download_retry_backoff_seconds,
             )
             save_state(state_path, state)
             LOGGER.info("poll complete, sent %s records", sent)

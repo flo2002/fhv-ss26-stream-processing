@@ -77,7 +77,7 @@
           "refId": "A"
         }
       ],
-      "title": "Processed Wet Periods",
+      "title": "Processed Wet Period Detections",
       "type": "stat"
     },
     {
@@ -230,10 +230,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 12,
+        "h": 10,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 13
       },
       "id": 4,
       "options": {
@@ -257,12 +257,113 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT station_id, period_start, period_end, duration_minutes, precipitation_observation_count FROM noaa_wet_period_events ORDER BY period_end DESC LIMIT 100;",
+          "rawSql": "SELECT\n  COALESCE(m.station_location || ' (' || e.station_id || ')', e.station_id) AS station,\n  e.station_id,\n  e.period_start,\n  e.period_end,\n  e.duration_minutes,\n  e.precipitation_observation_count\nFROM noaa_wet_period_events e\nLEFT JOIN noaa_station_metadata m ON m.station_id = e.station_id\nORDER BY e.period_end DESC\nLIMIT 100;",
           "refId": "A"
         }
       ],
       "title": "Latest Wet Periods",
       "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "noaa-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 5,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.8,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "orientation": "auto",
+        "showValue": "always",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "xField": "duration_bucket",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "noaa-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH bucketed AS (\n  SELECT\n    CASE\n      WHEN duration_minutes <= 30 THEN '0-30 min'\n      WHEN duration_minutes <= 60 THEN '31-60 min'\n      WHEN duration_minutes <= 180 THEN '61-180 min'\n      WHEN duration_minutes <= 360 THEN '181-360 min'\n      WHEN duration_minutes <= 720 THEN '361-720 min'\n      ELSE '>720 min'\n    END AS duration_bucket,\n    CASE\n      WHEN duration_minutes <= 30 THEN 1\n      WHEN duration_minutes <= 60 THEN 2\n      WHEN duration_minutes <= 180 THEN 3\n      WHEN duration_minutes <= 360 THEN 4\n      WHEN duration_minutes <= 720 THEN 5\n      ELSE 6\n    END AS bucket_order\n  FROM noaa_wet_period_events\n)\nSELECT duration_bucket, count(*) AS wet_period_count\nFROM bucketed\nGROUP BY duration_bucket, bucket_order\nORDER BY bucket_order;",
+          "refId": "A"
+        }
+      ],
+      "title": "Wet Period Count by Duration",
+      "type": "barchart"
     }
   ],
   "preload": false,
@@ -270,7 +371,7 @@
   "schemaVersion": 40,
   "tags": [
     "pattern-9",
-    "wet-dry",
+    "wet-period-detection",
     "state-machine"
   ],
   "templating": {
@@ -282,7 +383,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "NOAA Wet/Dry Period Detection 2025",
+  "title": "NOAA Wet Period Detection 2025",
   "uid": "noaa-wet-dry-periods-2025",
   "version": 1,
   "weekStart": ""
