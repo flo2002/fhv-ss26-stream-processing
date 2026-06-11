@@ -1,6 +1,88 @@
 # fhv-ss26-stream-processing
 Repo Description: Processing NOAA weather data with Kafka.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    ftp["NOAA FTP<br/>2025 ISD files"]
+    noaaProducer["Python producer"]
+    rawTopic[("noaa.weather.raw")]
+
+    subgraph kafka["Kafka topics"]
+        rawTopic
+        t1[("daily-average-temperature")]
+        t2[("monthly-frost-days")]
+        t3[("rapid-temperature-change")]
+        t4[("tourism-weather-quality")]
+        t5[("yearly-average-rain-duration")]
+        t6[("daily-temperature-ranking")]
+        t7[("temperature-forecast")]
+        t9[("wet-period-events")]
+        t10[("blizzard-events")]
+        ais[("marine.ais.positions")]
+        buoy[("marine.buoy.observations")]
+        route[("marine.route.recommendations")]
+    end
+
+    subgraph streams["Java Kafka Streams patterns"]
+        parser["Parse NOAA records"]
+        p1["P1 Temperature avg"]
+        p2["P2 Frost days"]
+        p3["P3 Rapid changes"]
+        p4["P4 Tourism index"]
+        p5["P5 Rain duration"]
+        p6["P6 Temp ranking"]
+        p7["P7 Forecast"]
+        p8["P8 Maritime routing"]
+        p9["P9 Wet periods"]
+        p10["P10 Blizzards"]
+    end
+
+    marineProducer["Marine demo producer"]
+    postgres[("Postgres<br/>dashboard tables")]
+    grafana["Grafana dashboards"]
+
+    ftp --> noaaProducer --> rawTopic --> parser
+    parser --> p1 --> t1
+    parser --> p2 --> t2
+    parser --> p3 --> t3
+    parser --> p4 --> t4
+    parser --> p5 --> t5
+    parser --> p6 --> t6
+    parser --> p7 --> t7
+    parser --> p9 --> t9
+    parser --> p10 --> t10
+
+    marineProducer --> ais --> p8
+    marineProducer --> buoy --> p8
+    p8 --> route
+
+    t1 --> postgres
+    t2 --> postgres
+    t3 --> postgres
+    t4 --> postgres
+    t5 --> postgres
+    t6 --> postgres
+    t7 --> postgres
+    t9 --> postgres
+    t10 --> postgres
+    route --> postgres
+    postgres --> grafana
+
+    classDef source fill:#e8f7f0,stroke:#2f855a,stroke-width:1px,color:#1a202c
+    classDef topicNode fill:#fff7db,stroke:#b7791f,stroke-width:1px,color:#1a202c
+    classDef streamNode fill:#e9f2ff,stroke:#2b6cb0,stroke-width:1px,color:#1a202c
+    classDef store fill:#f3e8ff,stroke:#6b46c1,stroke-width:1px,color:#1a202c
+    classDef viz fill:#ffe8ef,stroke:#b83280,stroke-width:1px,color:#1a202c
+
+    class ftp,noaaProducer,marineProducer source
+    class rawTopic,t1,t2,t3,t4,t5,t6,t7,t9,t10,ais,buoy,route topicNode
+    class parser,p1,p2,p3,p4,p5,p6,p7,p8,p9,p10 streamNode
+    class postgres store
+    class grafana viz
+```
+
 ## Ideas to poll the data via FTP
 - Kafka Connect with FTP Source Connector
   - is probably not good because of licensing issues
