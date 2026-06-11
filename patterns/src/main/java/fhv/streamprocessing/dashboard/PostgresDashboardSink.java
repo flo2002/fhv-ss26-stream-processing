@@ -19,6 +19,8 @@ import fhv.streamprocessing.pattern8.maritime.RouteRecommendationDashboardStore;
 import fhv.streamprocessing.pattern8.maritime.RouteRecommendationEvent;
 import fhv.streamprocessing.pattern9.wetdry.WetPeriodDashboardStore;
 import fhv.streamprocessing.pattern9.wetdry.WetPeriodEvent;
+import fhv.streamprocessing.pattern11.weatherregime.WeatherRegimeDashboardStore;
+import fhv.streamprocessing.pattern11.weatherregime.WeatherRegimeEvent;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -37,6 +39,7 @@ public class PostgresDashboardSink implements DashboardSink {
     private final TemperatureForecastDashboardStore forecastStore;
     private final RouteRecommendationDashboardStore routeRecommendationStore;
     private final WetPeriodDashboardStore wetPeriodStore;
+    private final WeatherRegimeDashboardStore weatherRegimeStore;
 
     public PostgresDashboardSink(String jdbcUrl, String user, String password, String stationHistoryUrl) {
         this(jdbcUrl, user, password, stationHistoryUrl, true);
@@ -67,6 +70,7 @@ public class PostgresDashboardSink implements DashboardSink {
             forecastStore = new TemperatureForecastDashboardStore(connection);
             routeRecommendationStore = new RouteRecommendationDashboardStore(connection);
             wetPeriodStore = new WetPeriodDashboardStore(connection);
+            weatherRegimeStore = new WeatherRegimeDashboardStore(connection);
 
             temperatureRankingStore.clearExistingRows();
             blizzardStore.clearExistingRows();
@@ -75,6 +79,7 @@ public class PostgresDashboardSink implements DashboardSink {
             forecastStore.clearExistingRows();
             routeRecommendationStore.clearExistingRows();
             wetPeriodStore.clearExistingRows();
+            weatherRegimeStore.clearExistingRows();
 
             incrementCounter = connection.prepareStatement("""
                 INSERT INTO noaa_stream_counts (kind, total, updated_at)
@@ -218,7 +223,18 @@ public class PostgresDashboardSink implements DashboardSink {
     }
 
     @Override
+    public synchronized void recordWeatherRegime(String stationDayKey, WeatherRegimeEvent event) {
+        try {
+            weatherRegimeStore.record(stationDayKey, event);
+            incrementCounter("weather_regime_events");
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not persist weather regime for " + stationDayKey, exception);
+        }
+    }
+
+    @Override
     public synchronized void close() {
+        closeQuietly(weatherRegimeStore);
         closeQuietly(wetPeriodStore);
         closeQuietly(routeRecommendationStore);
         closeQuietly(forecastStore);

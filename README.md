@@ -20,6 +20,7 @@ flowchart LR
         t7[("temperature-forecast")]
         t9[("wet-period-events")]
         t10[("blizzard-events")]
+        t11[("weather-regimes")]
         ais[("marine.ais.positions")]
         buoy[("marine.buoy.observations")]
         route[("marine.route.recommendations")]
@@ -37,6 +38,7 @@ flowchart LR
         p8["P8 Maritime routing"]
         p9["P9 Wet periods"]
         p10["P10 Blizzards"]
+        p11["P11 Weather regimes"]
     end
 
     marineProducer["Marine demo producer"]
@@ -53,6 +55,7 @@ flowchart LR
     parser --> p7 --> t7
     parser --> p9 --> t9
     parser --> p10 --> t10
+    parser --> p11 --> t11
 
     marineProducer --> ais --> p8
     marineProducer --> buoy --> p8
@@ -67,6 +70,7 @@ flowchart LR
     t7 --> postgres
     t9 --> postgres
     t10 --> postgres
+    t11 --> postgres
     route --> postgres
     postgres --> grafana
 
@@ -311,3 +315,32 @@ docker compose up --build -d --force-recreate noaa-stream-client
 ```
 
 ![Pattern 10: Blizzard](./assets/Screenshot%202026-06-06%20195120.png)
+
+## Pattern 11: weather regime clustering with MOA (Florian)
+thoughts:
+- Bonus Pattern with the MOA Machine Learning Framework
+- More concrete: We cluster weather stations using the CluStream algorithm (https://moa.cms.waikato.ac.nz/details/stream-clustering/)
+- Based on what information do we cluster? We created a feature vector for each station. One feature vector contains: 
+  1. average temperature
+  2. temperature range
+  3. average wind speed
+  4. maximum wind speed
+  5. sky clarity score (derived from visibility distance)
+  6. rain duration
+  
+  They are reused from other patterns, but calculated again in this pattern (that could be optimized)
+- We used min-max normalization to scale the 'numbers' of the feature vector to a 0-1 range. (1. to make the CluStream algorithm work better and 2. so the plotting becomes more interpretable)
+- Goal: trying to see weather regimes in the data (Großwetterlagen)
+- MOA with the CluStream algorithm produces numeric clusters, so the implementation maps learned cluster centers to readable weather-regime labels in Grafana. The labels are hardcoded:
+  1. cold_windy_wet
+  2. cold_windy_clear
+  3. mild_wet
+  4. mild_clear_breezy
+  5. hot_dry_clear
+  6. volatile_windy
+
+
+```powershell
+$env:STREAM_PATTERN='weather-regimes'
+docker compose up --build -d --force-recreate noaa-stream-client
+```

@@ -46,6 +46,7 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.tourism-weather-quality --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.temperature-forecast --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.wet-period-events --partitions 1 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic noaa.weather.weather-regimes --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.ais.positions --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.buoy.observations --partitions 1 --replication-factor 1
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic marine.route.recommendations --partitions 1 --replication-factor 1
@@ -123,6 +124,7 @@ services:
       KAFKA_TOURISM_QUALITY_TOPIC: noaa.weather.tourism-weather-quality
       KAFKA_FORECAST_EVENTS_TOPIC: noaa.weather.temperature-forecast
       KAFKA_WET_PERIOD_EVENTS_TOPIC: noaa.weather.wet-period-events
+      KAFKA_WEATHER_REGIME_TOPIC: noaa.weather.weather-regimes
       KAFKA_AIS_POSITIONS_TOPIC: marine.ais.positions
       KAFKA_BUOY_OBSERVATIONS_TOPIC: marine.buoy.observations
       KAFKA_ROUTE_RECOMMENDATIONS_TOPIC: marine.route.recommendations

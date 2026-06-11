@@ -1,0 +1,203 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "noaa-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "noaa-postgres"
+          },
+          "format": "table",
+          "rawSql": "SELECT count(*) AS station_days\nFROM noaa_weather_regimes\nWHERE observation_date BETWEEN DATE '2025-01-01' AND DATE '2025-12-31';",
+          "refId": "A"
+        }
+      ],
+      "title": "Clustered Station-Days",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "noaa-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 18,
+        "x": 6,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "noaa-postgres"
+          },
+          "format": "time_series",
+          "rawSql": "SELECT\n  observation_date::timestamp AS time,\n  cluster_label AS metric,\n  count(*) AS value\nFROM noaa_weather_regimes\nWHERE observation_date BETWEEN DATE '2025-01-01' AND DATE '2025-12-31'\nGROUP BY observation_date, cluster_label\nORDER BY observation_date, cluster_label;",
+          "refId": "A"
+        }
+      ],
+      "title": "Weather Regimes Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "noaa-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 10,
+        "x": 0,
+        "y": 5
+      },
+      "id": 3,
+      "options": {
+        "displayMode": "gradient",
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": false
+        },
+        "orientation": "horizontal",
+        "showValue": "always"
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "noaa-postgres"
+          },
+          "format": "table",
+          "rawSql": "SELECT cluster_label AS regime, count(*) AS station_days\nFROM noaa_weather_regimes\nWHERE observation_date BETWEEN DATE '2025-01-01' AND DATE '2025-12-31'\nGROUP BY cluster_label\nORDER BY station_days DESC, regime;",
+          "refId": "A"
+        }
+      ],
+      "title": "Regime Distribution",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "postgres",
+        "uid": "noaa-postgres"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 14,
+        "x": 10,
+        "y": 5
+      },
+      "id": 4,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "11.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "postgres",
+            "uid": "noaa-postgres"
+          },
+          "format": "table",
+          "rawSql": "SELECT\n  COALESCE(m.station_location, r.station_id) AS station,\n  r.station_id,\n  r.observation_date,\n  r.cluster_label,\n  r.distance_to_center,\n  r.avg_temperature_celsius,\n  r.avg_wind_speed_mps,\n  r.sky_clarity_score,\n  r.rain_duration_hours,\n  r.observation_count\nFROM noaa_weather_regimes r\nLEFT JOIN noaa_station_metadata m ON m.station_id = r.station_id\nWHERE r.observation_date BETWEEN DATE '2025-01-01' AND DATE '2025-12-31'\nORDER BY r.observation_date DESC, r.distance_to_center DESC\nLIMIT 100;",
+          "refId": "A"
+        }
+      ],
+      "title": "Latest Station-Day Assignments",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "noaa",
+    "weather-regimes"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "2025-01-01T00:00:00.000Z",
+    "to": "2025-12-31T23:59:59.000Z"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "NOAA Weather Regimes 2025",
+  "uid": "noaa-weather-regimes-2025",
+  "version": 1,
+  "weekStart": ""
+}

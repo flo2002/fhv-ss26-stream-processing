@@ -28,6 +28,8 @@ import fhv.streamprocessing.pattern8.maritime.MaritimeRoutingTopology;
 import fhv.streamprocessing.pattern8.maritime.RouteRecommendationEvent;
 import fhv.streamprocessing.pattern9.wetdry.WetDryPeriodTopology;
 import fhv.streamprocessing.pattern9.wetdry.WetPeriodEvent;
+import fhv.streamprocessing.pattern11.weatherregime.WeatherRegimeEvent;
+import fhv.streamprocessing.pattern11.weatherregime.WeatherRegimeTopology;
 import fhv.streamprocessing.serde.JsonSerde;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -198,6 +200,17 @@ public final class NoaaWeatherStreamApp {
                 .to(config.wetPeriodEventsTopic(), Produced.with(Serdes.String(), new JsonSerde<>(WetPeriodEvent.class)));
         }
 
+        if (config.runsPattern(StreamPattern.WEATHER_REGIMES)) {
+            WeatherRegimeTopology.build(
+                observations,
+                config.weatherRegimeYear(),
+                config.weatherRegimeClusterCount(),
+                config.weatherRegimeHorizon()
+            )
+                .peek(dashboardSink::recordWeatherRegime)
+                .to(config.weatherRegimeTopic(), Produced.with(Serdes.String(), new JsonSerde<>(WeatherRegimeEvent.class)));
+        }
+
         if (config.runsPattern(StreamPattern.MARITIME_ROUTING)) {
             KStream<String, AisPositionEvent> aisPositions = builder.stream(
                 config.aisPositionsTopic(),
@@ -275,6 +288,7 @@ public final class NoaaWeatherStreamApp {
         BLIZZARD("blizzard"),
         TEMPERATURE_FORECAST("temperature-forecast"),
         WET_DRY_PERIOD("wet-dry-period"),
+        WEATHER_REGIMES("weather-regimes"),
         MARITIME_ROUTING("maritime-routing");
 
         private final String configValue;
@@ -289,7 +303,7 @@ public final class NoaaWeatherStreamApp {
                 .filter(pattern -> pattern.configValue.equals(normalized))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
-                    "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, frost-days, temperature-ranking, rapid-temperature-change, tourism-weather-quality, blizzard, temperature-forecast, wet-dry-period, maritime-routing, all"
+                    "Unknown stream pattern '" + value + "'. Supported values: temperature, rain-duration, frost-days, temperature-ranking, rapid-temperature-change, tourism-weather-quality, blizzard, temperature-forecast, wet-dry-period, weather-regimes, maritime-routing, all"
                 ));
         }
 
@@ -312,6 +326,7 @@ public final class NoaaWeatherStreamApp {
         String tourismQualityTopic,
         String forecastEventsTopic,
         String wetPeriodEventsTopic,
+        String weatherRegimeTopic,
         String aisPositionsTopic,
         String buoyObservationsTopic,
         String routeRecommendationsTopic,
@@ -337,6 +352,9 @@ public final class NoaaWeatherStreamApp {
         int forecastAdvanceDays,
         int forecastGraceMinutes,
         int wetDryPeriodYear,
+        int weatherRegimeYear,
+        int weatherRegimeClusterCount,
+        int weatherRegimeHorizon,
         int maritimeRoutingYear,
         int maritimeRoutingJoinWindowMinutes,
         boolean dashboardEnabled,
@@ -358,6 +376,7 @@ public final class NoaaWeatherStreamApp {
             String tourismQualityTopic = env("KAFKA_TOURISM_QUALITY_TOPIC", "noaa.weather.tourism-weather-quality");
             String forecastEventsTopic = env("KAFKA_FORECAST_EVENTS_TOPIC", "noaa.weather.temperature-forecast");
             String wetPeriodEventsTopic = env("KAFKA_WET_PERIOD_EVENTS_TOPIC", "noaa.weather.wet-period-events");
+            String weatherRegimeTopic = env("KAFKA_WEATHER_REGIME_TOPIC", "noaa.weather.weather-regimes");
             String aisPositionsTopic = env("KAFKA_AIS_POSITIONS_TOPIC", "marine.ais.positions");
             String buoyObservationsTopic = env("KAFKA_BUOY_OBSERVATIONS_TOPIC", "marine.buoy.observations");
             String routeRecommendationsTopic = env("KAFKA_ROUTE_RECOMMENDATIONS_TOPIC", "marine.route.recommendations");
@@ -383,6 +402,9 @@ public final class NoaaWeatherStreamApp {
             int forecastAdvanceDays = envInt("FORECAST_ADVANCE_DAYS", 1);
             int forecastGraceMinutes = envInt("FORECAST_GRACE_MINUTES", 10);
             int wetDryPeriodYear = envInt("WET_DRY_PERIOD_YEAR", 2025);
+            int weatherRegimeYear = envInt("WEATHER_REGIME_YEAR", 2025);
+            int weatherRegimeClusterCount = envInt("WEATHER_REGIME_CLUSTER_COUNT", 6);
+            int weatherRegimeHorizon = envInt("WEATHER_REGIME_HORIZON", 10_000);
             int maritimeRoutingYear = envInt("MARITIME_ROUTING_YEAR", 2025);
             int maritimeRoutingJoinWindowMinutes = envInt("MARITIME_ROUTING_JOIN_WINDOW_MINUTES", 30);
 
@@ -400,6 +422,7 @@ public final class NoaaWeatherStreamApp {
                     tourismQualityTopic,
                     forecastEventsTopic,
                     wetPeriodEventsTopic,
+                    weatherRegimeTopic,
                     routeRecommendationsTopic,
                     rainDurationYear,
                     frostCountYear,
@@ -423,6 +446,9 @@ public final class NoaaWeatherStreamApp {
                     forecastAdvanceDays,
                     forecastGraceMinutes,
                     wetDryPeriodYear,
+                    weatherRegimeYear,
+                    weatherRegimeClusterCount,
+                    weatherRegimeHorizon,
                     maritimeRoutingYear,
                     maritimeRoutingJoinWindowMinutes
                 ),
@@ -437,6 +463,7 @@ public final class NoaaWeatherStreamApp {
                 tourismQualityTopic,
                 forecastEventsTopic,
                 wetPeriodEventsTopic,
+                weatherRegimeTopic,
                 aisPositionsTopic,
                 buoyObservationsTopic,
                 routeRecommendationsTopic,
@@ -462,6 +489,9 @@ public final class NoaaWeatherStreamApp {
                 forecastAdvanceDays,
                 forecastGraceMinutes,
                 wetDryPeriodYear,
+                weatherRegimeYear,
+                weatherRegimeClusterCount,
+                weatherRegimeHorizon,
                 maritimeRoutingYear,
                 maritimeRoutingJoinWindowMinutes,
                 envBoolean("DASHBOARD_SINK_ENABLED", true),
@@ -497,6 +527,7 @@ public final class NoaaWeatherStreamApp {
             String tourismQualityTopic,
             String forecastEventsTopic,
             String wetPeriodEventsTopic,
+            String weatherRegimeTopic,
             String routeRecommendationsTopic,
             int rainDurationYear,
             int frostCountYear,
@@ -520,6 +551,9 @@ public final class NoaaWeatherStreamApp {
             int forecastAdvanceDays,
             int forecastGraceMinutes,
             int wetDryPeriodYear,
+            int weatherRegimeYear,
+            int weatherRegimeClusterCount,
+            int weatherRegimeHorizon,
             int maritimeRoutingYear,
             int maritimeRoutingJoinWindowMinutes
         ) {
@@ -542,6 +576,7 @@ public final class NoaaWeatherStreamApp {
                 tourismQualityTopic,
                 forecastEventsTopic,
                 wetPeriodEventsTopic,
+                weatherRegimeTopic,
                 routeRecommendationsTopic,
                 rainDurationYear,
                 frostCountYear,
@@ -565,6 +600,9 @@ public final class NoaaWeatherStreamApp {
                 forecastAdvanceDays,
                 forecastGraceMinutes,
                 wetDryPeriodYear,
+                weatherRegimeYear,
+                weatherRegimeClusterCount,
+                weatherRegimeHorizon,
                 maritimeRoutingYear,
                 maritimeRoutingJoinWindowMinutes
             );
@@ -593,6 +631,7 @@ public final class NoaaWeatherStreamApp {
                 "noaa.weather.tourism-weather-quality",
                 "noaa.weather.temperature-forecast",
                 "noaa.weather.wet-period-events",
+                "noaa.weather.weather-regimes",
                 "marine.route.recommendations",
                 rainDurationYear,
                 frostCountYear,
@@ -616,6 +655,9 @@ public final class NoaaWeatherStreamApp {
                 1,
                 10,
                 2025,
+                2025,
+                6,
+                10_000,
                 2025,
                 30
             );
@@ -642,6 +684,7 @@ public final class NoaaWeatherStreamApp {
                 "noaa.weather.tourism-weather-quality",
                 "noaa.weather.temperature-forecast",
                 "noaa.weather.wet-period-events",
+                "noaa.weather.weather-regimes",
                 "marine.route.recommendations",
                 rainDurationYear,
                 2025,
@@ -665,6 +708,9 @@ public final class NoaaWeatherStreamApp {
                 1,
                 10,
                 2025,
+                2025,
+                6,
+                10_000,
                 2025,
                 30
             );
@@ -713,6 +759,7 @@ public final class NoaaWeatherStreamApp {
                 "noaa.weather.tourism-weather-quality",
                 forecastEventsTopic,
                 "noaa.weather.wet-period-events",
+                "noaa.weather.weather-regimes",
                 "marine.route.recommendations",
                 rainDurationYear,
                 frostCountYear,
@@ -737,6 +784,9 @@ public final class NoaaWeatherStreamApp {
                 forecastGraceMinutes,
                 2025,
                 2025,
+                6,
+                10_000,
+                2025,
                 30
             );
         }
@@ -754,6 +804,7 @@ public final class NoaaWeatherStreamApp {
             String tourismQualityTopic,
             String forecastEventsTopic,
             String wetPeriodEventsTopic,
+            String weatherRegimeTopic,
             String routeRecommendationsTopic,
             int rainDurationYear,
             int frostCountYear,
@@ -777,6 +828,9 @@ public final class NoaaWeatherStreamApp {
             int forecastAdvanceDays,
             int forecastGraceMinutes,
             int wetDryPeriodYear,
+            int weatherRegimeYear,
+            int weatherRegimeClusterCount,
+            int weatherRegimeHorizon,
             int maritimeRoutingYear,
             int maritimeRoutingJoinWindowMinutes
         ) {
@@ -796,6 +850,7 @@ public final class NoaaWeatherStreamApp {
                     tourismQualityTopic,
                     forecastEventsTopic,
                     wetPeriodEventsTopic,
+                    weatherRegimeTopic,
                     routeRecommendationsTopic,
                     rainDurationYear,
                     frostCountYear,
@@ -819,6 +874,9 @@ public final class NoaaWeatherStreamApp {
                     forecastAdvanceDays,
                     forecastGraceMinutes,
                     wetDryPeriodYear,
+                    weatherRegimeYear,
+                    weatherRegimeClusterCount,
+                    weatherRegimeHorizon,
                     maritimeRoutingYear,
                     maritimeRoutingJoinWindowMinutes
                 ))
@@ -843,6 +901,7 @@ public final class NoaaWeatherStreamApp {
             String tourismQualityTopic,
             String forecastEventsTopic,
             String wetPeriodEventsTopic,
+            String weatherRegimeTopic,
             String routeRecommendationsTopic,
             int rainDurationYear,
             int frostCountYear,
@@ -866,6 +925,9 @@ public final class NoaaWeatherStreamApp {
             int forecastAdvanceDays,
             int forecastGraceMinutes,
             int wetDryPeriodYear,
+            int weatherRegimeYear,
+            int weatherRegimeClusterCount,
+            int weatherRegimeHorizon,
             int maritimeRoutingYear,
             int maritimeRoutingJoinWindowMinutes
         ) {
@@ -880,6 +942,7 @@ public final class NoaaWeatherStreamApp {
                 tourismQualityTopic,
                 forecastEventsTopic,
                 wetPeriodEventsTopic,
+                weatherRegimeTopic,
                 routeRecommendationsTopic
             );
             if (pattern == StreamPattern.RAIN_DURATION) {
@@ -933,6 +996,13 @@ public final class NoaaWeatherStreamApp {
                     + "-jwm" + maritimeRoutingJoinWindowMinutes
                     + "-caribbean-real-sources-counters-v1";
             }
+            if (pattern == StreamPattern.WEATHER_REGIMES) {
+                return key
+                    + "-" + weatherRegimeYear
+                    + "-k" + weatherRegimeClusterCount
+                    + "-h" + weatherRegimeHorizon
+                    + "-station-day-v1";
+            }
             return key;
         }
 
@@ -947,6 +1017,7 @@ public final class NoaaWeatherStreamApp {
             String tourismQualityTopic,
             String forecastEventsTopic,
             String wetPeriodEventsTopic,
+            String weatherRegimeTopic,
             String routeRecommendationsTopic
         ) {
             return switch (pattern) {
@@ -959,6 +1030,7 @@ public final class NoaaWeatherStreamApp {
                 case TOURISM_WEATHER_QUALITY -> tourismQualityTopic;
                 case TEMPERATURE_FORECAST -> forecastEventsTopic;
                 case WET_DRY_PERIOD -> wetPeriodEventsTopic;
+                case WEATHER_REGIMES -> weatherRegimeTopic;
                 case MARITIME_ROUTING -> routeRecommendationsTopic;
             };
         }
