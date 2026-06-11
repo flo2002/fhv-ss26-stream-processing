@@ -112,7 +112,7 @@ $env:STREAM_PATTERN='frost-days'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
 
-![Pattern 2: Frost Stations](./assets/Screenshot%2026-06-06%191852.png)
+![Pattern 2: Frost Stations](./assets/Screenshot%202026-06-06%20191852.png)
 
 ## Pattern 3: rapid temperature change detection (Haroldas)
 thoughts:
@@ -166,9 +166,9 @@ docker compose up --build -d --force-recreate noaa-stream-client
 ```
 
 
-![Pattern 6: Temperature Ranking](./assets/Screenshot%2026-06-06%193219.png)
+![Pattern 6: Temperature Ranking](./assets/Screenshot%202026-06-06%20193219.png)
 
-![Pattern 6: Temperature Ranking 2](./assets/Screenshot%2026-06-06%193721.png)
+![Pattern 6: Temperature Ranking 2](./assets/Screenshot%202026-06-06%20193721.png)
 
 ## Pattern 7: temperature trend forecasting (Haroldas)
 thoughts:
@@ -222,10 +222,10 @@ docker compose up --build -d --force-recreate noaa-stream-client
 ## Pattern 10: blizzard detection (Chris)
 
 
-- Dashboard: `NNOAA Blizzard Events 2025`
+- Dashboard: `NOAA Blizzard Events 2025`
 ```powershell
 $env:STREAM_PATTERN='blizzard'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
 
-![Pattern 10: Blizzard](./assets/Screenshot%2026-06-06%195120.png)
+![Pattern 10: Blizzard](./assets/Screenshot%202026-06-06%20195120.png)
