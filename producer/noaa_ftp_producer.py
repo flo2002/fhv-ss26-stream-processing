@@ -131,8 +131,19 @@ def list_files(ftp: ftplib.FTP, remote_dir: str, patterns: List[str]) -> List[Re
 def load_state(path: Path) -> Dict[str, Dict[str, object]]:
     if not path.exists():
         return {}
-    with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            content = handle.read().strip()
+    except OSError as error:
+        LOGGER.warning("Could not read state file %s, starting fresh: %s", path, error)
+        return {}
+    if not content:
+        return {}
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as error:
+        LOGGER.warning("State file %s is not valid JSON, starting fresh: %s", path, error)
+        return {}
 
 
 def parse_patterns(value: str) -> List[str]:

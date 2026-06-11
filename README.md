@@ -178,7 +178,7 @@ round robin with:
 # Patterns
 ## Pattern 1: compute the average temperatures for each stations per day in 2025 (Florian)
 thoughts:
-- Python is no option (further info from Haroldas) --> Java (especially with Java/Kafka Streams) is used.
+- Python is no option (further info from Haroldas) --> Java (especially with Java/Kafka Streams) is used. We initially tried Python, but it has no real Kafka Streams processing API — the available libraries were either not fully developed or already deprecated — so we switched to Java, where Kafka Streams is the officially supported stream-processing API.
 - Where should parsed data go? --> Into a new topic `noaa.weather.parsed` with a more structured format (e.g. JSON with fields for station, date, temperature, etc.)
 - How to visualize the results? --> I created an optional Grafana dashboard. That also needs a postgres db for storing/caching the aggregated data.
 
@@ -204,13 +204,15 @@ docker compose up --build -d --force-recreate noaa-stream-client
 thoughts:
 - Implemented as summary statistics on time-dependent functions over a sliding window.
 - Calculates the rate of temperature change (°C/h) between consecutive readings for each station.
-- Aggregates these rates over a window (default 24h) to find the minimum, maximum, and average rate of change.
+- Aggregates these rates over a tumbling window (default 24h) to find the minimum, maximum, and average rate of change for the window.
 - Useful for detecting sudden warming or cooling events that could indicate passing weather fronts.
 - Dashboard: `NOAA Rapid Temperature Change 2025`
 ```powershell
 $env:STREAM_PATTERN='rapid-temperature-change'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
+
+![Pattern 3: Rapid Temperature Change](./assets/Pattern3.png)
 
 ## Pattern 4: tourism weather quality index (Mykola)
 thoughts:
@@ -259,14 +261,16 @@ docker compose up --build -d --force-recreate noaa-stream-client
 ## Pattern 7: temperature trend forecasting (Haroldas)
 thoughts:
 - Implemented as simple forecasting using linear regression over a sliding window.
-- Calculates the temperature trend (slope) for each station based on historical values in a 30-day window.
-- Generates a 24-hour forecast by projecting the current trend forward.
+- Calculates the temperature trend (least-squares slope) for each station based on historical values in a 30-day window that advances by 1 day.
+- Generates a 24-hour forecast by projecting the regression line forward 24h from the latest reading in the window (anchored at the most recent observation, not the window average).
 - Useful for real-time climate change trend monitoring and short-term temperature prediction.
 - Dashboard: `NOAA Temperature Forecast 2025`
 ```powershell
 $env:STREAM_PATTERN='temperature-forecast'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
+
+![Pattern 7: Temperature Forecast](./assets/Pattern7.png)
 
 ## Pattern 8: Schiffs- und Offshore-Routing / Caribbean maritime routing (Mykola)
 thoughts:
