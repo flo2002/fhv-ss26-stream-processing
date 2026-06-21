@@ -35,17 +35,30 @@ class BuoyStation:
 
 
 SEA_AREAS: Tuple[Tuple[str, float, float, float, float], ...] = (
+    ("BAHAMAS_NORTH", 25.0, 29.0, -74.0, -69.0),
+    ("BAHAMAS_EAST", 22.5, 25.5, -70.5, -66.5),
+    ("CARIB_PR_SOUTH", 17.5, 18.2, -67.6, -65.7),
     ("CARIB_PR_WEST", 17.8, 19.2, -68.4, -66.7),
     ("CARIB_PR_NORTH", 18.0, 21.5, -66.9, -64.4),
     ("CARIB_USVI", 17.2, 19.0, -65.4, -64.0),
     ("CARIB_EAST", 15.5, 17.5, -64.2, -62.5),
+    ("CARIB_CENTRAL", 13.0, 17.5, -77.0, -70.0),
+    ("CARIB_WEST", 16.0, 21.5, -86.5, -80.0),
 )
 
 
 DEFAULT_BUOY_STATIONS = (
     "41115:CARIB_PR_WEST:18.376:-67.280,"
     "41043:CARIB_PR_NORTH:21.090:-64.864,"
-    "42060:CARIB_EAST:16.428:-63.210"
+    "41052:CARIB_USVI:18.249:-64.763,"
+    "41056:CARIB_USVI:18.261:-65.464,"
+    "42085:CARIB_PR_SOUTH:17.870:-66.537,"
+    "42060:CARIB_EAST:16.428:-63.210,"
+    "41046:BAHAMAS_EAST:23.822:-68.384,"
+    "41047:BAHAMAS_NORTH:27.514:-71.483,"
+    "42058:CARIB_CENTRAL:14.923:-74.918,"
+    "42056:CARIB_WEST:19.820:-84.945,"
+    "42057:CARIB_WEST:16.908:-81.422"
 )
 
 
@@ -352,7 +365,7 @@ def emit_events(
             key = str(event["buoyId"])
         producer.send(topic, key=key, value=event, timestamp_ms=kafka_timestamp_ms(event))
         sent += 1
-        LOGGER.info("sent %s key=%s observedAt=%s seaAreaId=%s", event_type, key, event["observedAt"], event["seaAreaId"])
+        LOGGER.debug("sent %s key=%s observedAt=%s seaAreaId=%s", event_type, key, event["observedAt"], event["seaAreaId"])
         if interval_seconds > 0:
             time.sleep(interval_seconds)
     producer.flush()
@@ -382,8 +395,8 @@ def main() -> None:
     ais_base_url = os.getenv("AIS_BASE_URL", AIS_BASE_URL)
     ndbc_base_url = os.getenv("NDBC_STDMET_BASE_URL", NDBC_STDMET_BASE_URL)
     buoy_stations = parse_buoy_stations(os.getenv("NDBC_BUOY_STATIONS", DEFAULT_BUOY_STATIONS))
-    timeout_seconds = env_int("SOURCE_TIMEOUT_SECONDS", 120)
-    max_ais_records_per_day = env_int("MAX_AIS_RECORDS_PER_DAY", 5000)
+    timeout_seconds = env_int("SOURCE_TIMEOUT_SECONDS", 600)
+    max_ais_records_per_day = env_int("MAX_AIS_RECORDS_PER_DAY", 0)
     interval_seconds = env_float("EMIT_INTERVAL_SECONDS", 0.0)
     state_path = Path(os.getenv("STATE_FILE", "/app/state/marine_pattern8_state.json"))
     reset_state = env_bool("RESET_STATE", False)

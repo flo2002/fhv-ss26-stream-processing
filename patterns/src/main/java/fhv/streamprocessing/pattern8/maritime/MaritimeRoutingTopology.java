@@ -45,7 +45,7 @@ public final class MaritimeRoutingTopology {
         BuoyObservationEvent buoy,
         Duration joinWindow
     ) {
-        double riskScore = Math.min(100.0, (buoy.waveHeightMeters() * 22.0) + (buoy.windSpeedMetersPerSecond() * 2.5));
+        double riskScore = Math.min(100.0, (buoy.waveHeightMeters() * 8.0) + (buoy.windSpeedMetersPerSecond() * 2.5));
         String riskClass = riskClass(riskScore);
         long etaDelayMinutes = etaDelayMinutes(riskClass);
         Instant updatedEta = ais.reportedEta() == null ? null : ais.reportedEta().plus(Duration.ofMinutes(etaDelayMinutes));
