@@ -187,9 +187,11 @@ thoughts:
 
 ## Pattern 2: count frost days per station and month in 2025 (Chris)
 thoughts:
-- Similar to pattern 1, but instead of averaging values I count predicate hits with `temp < 0C`.
-- To avoid overcounting, multiple frost measurements on the same station and day are counted only once, then aggregated per month.
-- Predicate-based count: count distinct frost days per station and month in 2025.
+- A frost day is a station-day with at least one usable observation below `0 °C`.
+- The first `KTable` groups by station and day. Its `count()` may change from `1` to `2` when another frost reading for the same day arrives, but it still represents only one frost day.
+- The daily table is re-grouped by station and month. Every positive station-day contributes exactly `1` to the monthly total.
+- Because the input is a changing `KTable`, the monthly aggregate needs an adder and a subtractor. When a daily row is replaced, Kafka calculates `total - old contribution + new contribution`.
+- Example: if the daily count changes from `1` to `2`, its contribution changes from `1` to `1`; a monthly total of `10` therefore remains `10 - 1 + 1 = 10`, instead of incorrectly becoming `11`.
 - had to force recreate to only run one pattern at a time:
 - Grafana dashboard for it: `NOAA Frost Days 2025`
 
@@ -245,8 +247,11 @@ docker compose up --build -d --force-recreate noaa-stream-client
 
 ## Pattern 6: top 10 hottest and coldest stations in 2025 by peak temperature (Chris)
 thoughts:
-- Implemented as ordered summary statistics with a yearly 2025 window and Top-N ranking over station peak temperatures.
-- `hot` ranks stations by their highest measured temperature in 2025, `cold` ranks stations by their lowest measured temperature in 2025.
+- The first aggregate keeps one running summary per station: count, average, annual minimum, and annual maximum.
+- `hot` ranks stations by their highest measured temperature in 2025, while `cold` ranks stations by their lowest measured temperature in 2025. Each station appears at most once in each list.
+- When a station summary changes, its stale ranking entry is removed and the updated entry is inserted at the correct position using binary search.
+- The sorted lists are immediately trimmed to ten candidates, so an update touches at most ten entries instead of sorting every station again.
+- This remains exact because a station's annual maximum can only increase and its annual minimum can only decrease. An evicted station only needs to return when a later observation improves its extreme.
 - We used the full year as the window instead of the last 24 hours because our dataset is only historical 2025 NOAA data, not a live continuously growing stream. 
 - Dashboard: `NOAA Temperature Ranking 2025`
 ```powershell
@@ -319,8 +324,12 @@ docker compose up --build -d --force-recreate noaa-stream-client
 ![9: Wet period detection](./assets/Screenshot%202026-06-11%20at%2014.03.16.png)
 
 ## Pattern 10: blizzard detection (Chris)
-
-
+thoughts:
+- Implemented as overlapping 24-hour event-time windows per station.
+- `BlizzardWindowAggregate` collects three types of evidence across the complete window: freezing temperature, strong wind, and precipitation.
+- The signals do not need to occur in the same observation. For example, freezing at 08:00, precipitation at 10:00, and strong wind at 14:00 can jointly satisfy one station window.
+- `BlizzardEvent.isDetected()` requires all three counters to be greater than zero. Cold and strong wind without precipitation are not emitted as a blizzard event.
+- NOAA provides rain duration but no explicit snow field. During freezing conditions, `rainDurationHours > 0` is therefore used as the available precipitation proxy, so the result represents blizzard-like conditions rather than a meteorologically complete snow classification.
 - Dashboard: `NOAA Blizzard Events 2025`
 ```powershell
 $env:STREAM_PATTERN='blizzard'
