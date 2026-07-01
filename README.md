@@ -228,6 +228,7 @@ thoughts:
 $env:STREAM_PATTERN='tourism-weather-quality'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
+![Pattern 4: Tourism weather quality index](./assets/Screenshot%202026-05-31%20172712.png)
 
 ## Pattern 5: compute average rain duration for 2025 (Florian)
 thoughts:
@@ -295,6 +296,7 @@ docker compose up --build -d kafka postgres grafana noaa-stream-client
 $env:RESET_MARINE_STATE='true'
 docker compose up --build marine-pattern8-producer
 ```
+![9: Caribbean maritime routing](./assets/Screenshot%202026-06-11%20at%2019.03.12.png)
 
 ## Pattern 9: wet period detection (Mykola)
 thoughts:
