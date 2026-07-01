@@ -116,7 +116,40 @@
   pre { background: var(--code-bg); color: var(--code-ink); border-radius: 10px; padding: 1em 1.2em;
     font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: clamp(11px,1.2vw,15px);
     line-height: 1.55; overflow: auto; }
-  pre .k { color: #7dd3fc; } pre .s { color: #86efac; } pre .c { color: #64748b; }
+  pre .k { color: #7dd3fc; } pre .s { color: #fbbf24; }
+  pre .c { color:#86efac; font-style:italic; }
+  pre .code-java { color:#f8fafc; }
+  pre .code-comment { color:#86efac; font-style:italic; }
+  .code-slide pre { font-size: clamp(10px, 1.05vw, 14px); line-height: 1.45; max-height:none;
+    white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-word; overflow:visible; }
+  .code-slide .impl { display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+    gap:2vw; align-items:start; min-height:0; }
+  .code-slide .takeaway { padding:0; background:transparent; }
+  .code-slide .takeaway p { font-size:clamp(13px,1.25vw,17px); color:var(--muted); }
+  .code-slide .takeaway pre { padding:.75em; font-size:clamp(9px,.88vw,12px); line-height:1.4;
+    max-height:none; white-space:pre-wrap; overflow:visible; }
+  .code-slide .helper-title { color:var(--muted); font:600 clamp(11px,1.05vw,14px)
+    ui-monospace,Menlo,Consolas,monospace; margin-bottom:.5em; overflow-wrap:anywhere; }
+  .code-slide pre.topology-build { max-height:none; overflow:visible; white-space:pre-wrap;
+    overflow-wrap:anywhere; word-break:normal; scrollbar-width:thin; }
+  .pattern-type { display:block; font-size:clamp(18px,1.7vw,24px); color:var(--accent);
+    font-weight:750; letter-spacing:.01em; margin-bottom:.85em; }
+  .code-summary { display:grid; grid-template-columns:1fr; gap:.18em;
+    margin:.05em 0 .45em 1.25em; padding:0; }
+  .code-summary li { font-size:clamp(15px,1.3vw,18px); line-height:1.35; margin:0; color:var(--ink); }
+  .code-summary li::marker { color:var(--accent); }
+  .code-summary code { font-size:.84em; font-weight:700; }
+  .code-importance { margin:0 0 .75em; padding:.45em .8em; border-left:4px solid var(--accent2);
+    background:var(--source-bg); color:var(--ink); font-size:clamp(14px,1.2vw,17px); line-height:1.35; }
+  .code-importance strong { color:var(--brand); }
+  /* Pattern slide 1 explains the idea; pattern slide 2 owns the implementation code. */
+  .slide:not(.code-slide) .inline-code { display:none; }
+  .code-file { color:var(--muted); font:600 clamp(11px,1.05vw,14px) ui-monospace,Menlo,Consolas,monospace;
+    margin-bottom:.5em; overflow-wrap:anywhere; }
+  .inline-code { margin-top:.65em; }
+  .inline-code pre { padding:.55em .65em; font-size:clamp(15px,1.55vw,21px); line-height:1.25;
+    white-space:pre-wrap; overflow:visible; }
+  .inline-code .code-file { font-size:clamp(15px,1.55vw,21px); margin-bottom:.2em; }
 
   /* Chrome: footer, progress, nav, notes */
   .footer { position: absolute; bottom: 0; left: 0; right: 0; height: 4.4vh; min-height: 30px;
@@ -438,6 +471,7 @@
     <div class="pat-head"><span class="pat-num">P1</span><h2 style="border:none;padding:0;margin:0">Daily average temperature</h2><span class="owner">Florian</span></div>
     <div class="content"><div class="cols wide-left">
       <div>
+        <span class="pattern-type">Pattern: Keyed aggregation</span>
         <p>Average temperature <b>per station per day</b> across 2025.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd><code>groupByKey</code>(station+day) → <code>aggregate</code> → <b>KTable</b> of running averages</dd>
@@ -445,6 +479,16 @@
           <dt>Dashboard</dt><dd>NOAA Kafka Stream Processing</dd>
         </dl>
         <div class="callout" style="margin-top:.7em"><p class="muted">The foundational aggregation pattern — most later patterns build on this shape.</p></div>
+        <div class="inline-code"><div class="code-file">DailyAverageTemperatureTopology.java</div><pre><span class="c">// Give every reading a station+day key, so Kafka sends
+// readings for the same daily average to the same state.</span>
+observations.map((k,o) -&gt; pair(stationDay(o),o))
+  .groupByKey()
+  <span class="c">// Update the stored sum and count whenever a reading arrives.</span>
+  .aggregate(TemperatureAggregate::<span class="k">new</span>, addTemp);
+
+<span class="c">// TemperatureAggregate: retain exact inputs for the average.</span>
+count++; sum += value;
+average = sum / count;</pre></div>
       </div>
       <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-05-29%20112959.png" alt="Pattern 1 daily average temperature dashboard"><span class="shot-cap">Daily average temperature per station</span></div>
     </div></div>
@@ -456,6 +500,7 @@
     <div class="pat-head"><span class="pat-num">P2</span><h2 style="border:none;padding:0;margin:0">Frost days per month</h2><span class="owner">Chris</span></div>
     <div class="content"><div class="cols wide-left">
       <div>
+        <span class="pattern-type">Pattern: Distinct count + re-aggregation</span>
         <p>Count <b>frost days</b> (<code>temp &lt; 0 °C</code>) per station and month.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd>Predicate count; each frost <b>day counted once</b>, then aggregated per month</dd>
@@ -463,6 +508,15 @@
           <dt>Dashboard</dt><dd>NOAA Frost Days 2025</dd>
         </dl>
         <div class="callout amber" style="margin-top:.7em"><p class="muted">De-duplication matters: many readings per day → count the day, not each reading.</p></div>
+        <div class="inline-code"><div class="code-file">MonthlyFrostDaysTopology.java</div><pre><span class="c">// First create one Kafka table row per frost day, even if
+// the station sent several sub-zero readings that day.</span>
+KTable&lt;String,Long&gt; days = frostReadings.groupByKey().count();
+<span class="c">// Then group those distinct days by station+month and count.</span>
+days.groupBy((day,n) -&gt; pair(stationMonth(day),1L))
+  .aggregate(()-&gt;0L, addDay, removeDay);
+
+<span class="c">// A daily key becomes a monthly key before repartitioning.</span>
+stationMonth = stationId + "|" + YearMonth.from(day);</pre></div>
       </div>
       <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-06%20191852.png" alt="Pattern 2 frost days dashboard"><span class="shot-cap">Frost days per station / month</span></div>
     </div></div>
@@ -474,12 +528,22 @@
     <div class="pat-head"><span class="pat-num">P3</span><h2 style="border:none;padding:0;margin:0">Rapid temperature change</h2><span class="owner">Haroldas</span></div>
     <div class="content"><div class="cols wide-left">
       <div>
+        <span class="pattern-type">Pattern: Tumbling-window aggregation</span>
         <p>Detect sudden warming/cooling — e.g. passing weather fronts.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd>Rate of change <b>°C/h</b> between consecutive readings, aggregated over a <b>tumbling 24 h window</b> → min / max / avg</dd>
           <dt>Output</dt><dd><code>rapid-temperature-change</code></dd>
           <dt>Dashboard</dt><dd>NOAA Rapid Temperature Change 2025</dd>
         </dl>
+        <div class="inline-code"><div class="code-file">RapidTemperatureChangeTopology.java</div><pre><span class="c">// Kafka collects each station's readings in separate 24 h
+// event-time windows, based on when measurements happened.</span>
+observations.selectKey((k,o) -&gt; o.stationId()).groupByKey()
+  .windowedBy(tumbling24Hours)
+  <span class="c">// Compare consecutive readings and store min/max/avg °C/h.</span>
+  .aggregate(RapidChangeAggregate::<span class="k">new</span>, addReading);
+
+<span class="c">// Aggregate: normalize change by the real time between events.</span>
+ratePerHour = (temperature - lastTemperature) / elapsedHours;</pre></div>
       </div>
       <div class="shot-wrap"><img class="shot" src="assets/Pattern3.png" alt="Pattern 3 rapid temperature change dashboard"><span class="shot-cap">Rate-of-change per window</span></div>
     </div></div>
@@ -491,6 +555,7 @@
     <div class="pat-head"><span class="pat-num">P4</span><h2 style="border:none;padding:0;margin:0">Tourism weather quality index</h2><span class="owner">Mykola</span></div>
     <div class="content"><div class="cols">
       <div>
+        <span class="pattern-type">Pattern: Enrichment + windowed aggregation</span>
         <p>A 0–100 quality score per <b>region</b>, per day.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>Inputs</dt><dd>Temperature, wind, visibility → sky-clarity proxy</dd>
@@ -498,6 +563,15 @@
           <dt>Window</dt><dd>Tumbling 24 h</dd>
           <dt>Output</dt><dd><code>tourism-weather-quality</code></dd>
         </dl>
+        <div class="inline-code"><div class="code-file">TourismWeatherQualityTopology.java</div><pre><span class="c">// Replace the station key with its region, so Kafka processes
+// all stations from the same tourism region together.</span>
+observations.map((k,o) -&gt; pair(regionOf(o),o))
+  .groupByKey().windowedBy(dayWindow)
+  <span class="c">// Combine temperature, wind and sky values into one score.</span>
+  .aggregate(QualityAggregate::<span class="k">new</span>, addReading);
+
+<span class="c">// Aggregate: combine normalized comfort sub-scores.</span>
+quality = tempScore*.55 + windScore*.25 + skyScore*.20;</pre></div>
       </div>
       <div>
         <div class="callout green"><h4>Scoring formula</h4>
@@ -515,6 +589,7 @@
     <div class="pat-head"><span class="pat-num">P5</span><h2 style="border:none;padding:0;margin:0">Average rain duration</h2><span class="owner">Florian</span></div>
     <div class="content"><div class="cols wide-left">
       <div>
+        <span class="pattern-type">Pattern: Keyed running aggregate</span>
         <p>Average precipitation duration per station for 2025.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd>Aggregation over parsed rain-duration values → yearly average</dd>
@@ -522,6 +597,16 @@
           <dt>Dashboard</dt><dd>Average rain duration 2025</dd>
         </dl>
         <div class="callout" style="margin-top:.7em"><p class="muted">Same aggregation shape as P1, on the precipitation dimension.</p></div>
+        <div class="inline-code"><div class="code-file">YearlyRainDurationTopology.java</div><pre><span class="c">// Use station+year as the Kafka key, so all rain readings
+// contributing to one yearly result share the same state.</span>
+observations.map((k,o) -&gt; pair(stationYear(o),o))
+  .groupByKey()
+  <span class="c">// Add duration and increment count to maintain the average.</span>
+  .aggregate(RainAggregate::<span class="k">new</span>, addRainDuration);
+
+<span class="c">// RainDurationAggregate: store total and count, not rounded averages.</span>
+count++; totalHours += durationHours;
+averageHours = totalHours / count;</pre></div>
       </div>
       <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-05-31%20172712.png" alt="Pattern 5 average rain duration dashboard"><span class="shot-cap">Average rain duration per station</span></div>
     </div></div>
@@ -533,17 +618,27 @@
     <div class="pat-head"><span class="pat-num">P6</span><h2 style="border:none;padding:0;margin:0">Top-10 hottest &amp; coldest stations</h2><span class="owner">Chris</span></div>
     <div class="content"><div class="cols wide-left">
       <div>
+        <span class="pattern-type">Pattern: Incremental Top-N aggregation</span>
         <p>Rank stations by <b>peak temperature</b> in 2025.</p>
         <dl class="kv" style="margin-top:.6em">
-          <dt>How</dt><dd>Ordered summary statistics + <b>Top-N</b> over a full-year window</dd>
+          <dt>How</dt><dd>Update station statistics → binary insert into sorted <b>Top-10 / Bottom-10</b> lists</dd>
           <dt>Why full year</dt><dd>Data is historical, not a live-growing stream</dd>
           <dt>Output</dt><dd><code>daily-temperature-ranking</code></dd>
           <dt>Dashboard</dt><dd>NOAA Temperature Ranking 2025</dd>
         </dl>
+        <div class="inline-code"><div class="code-file">AnnualPeakTemperatureRankingTopology.java</div><pre><span class="c">// First, Kafka stores min/max/average for every station.</span>
+observations.selectKey((k,o) -&gt; o.stationId()).groupByKey()
+  .aggregate(StationStats::<span class="k">new</span>,addReading)
+  <span class="c">// Send updates to the annual ranking state.</span>
+  .toStream().map((s,stats) -&gt; pair(yearKey,stats))
+  .groupByKey().aggregate(Ranking::<span class="k">new</span>,updateTop10);
+
+<span class="c">// Remove old entry, insert at sorted position, trim to ten.</span>
+ranking.update(updatedStation);</pre></div>
       </div>
       <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-06%20193219.png" alt="Pattern 6 temperature ranking dashboard"><span class="shot-cap">Hottest / coldest ranking</span></div>
     </div></div>
-    <aside class="notes"><b>Notes:</b> Hot ranks by max temperature, cold by min. Full-year window chosen deliberately given the bounded historical dataset.</aside>
+    <aside class="notes"><b>Notes:</b> Hot ranks by max temperature, cold by min. The aggregate stores only sorted Top-10 and Bottom-10 candidate lists. Each station update removes its previous candidate, inserts the replacement using binary search, and trims the list to ten.</aside>
   </section>
 
   <!-- 17. PATTERN 7 -->
@@ -551,6 +646,7 @@
     <div class="pat-head"><span class="pat-num">P7</span><h2 style="border:none;padding:0;margin:0">Temperature trend forecasting</h2><span class="owner">Haroldas</span></div>
     <div class="content"><div class="cols wide-left">
       <div>
+        <span class="pattern-type">Pattern: Hopping-window forecasting</span>
         <p>Short-term forecast via <b>linear regression</b>.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd>Least-squares slope over a <b>30-day sliding window</b> advancing 1 day</dd>
@@ -558,6 +654,16 @@
           <dt>Output</dt><dd><code>temperature-forecast</code></dd>
           <dt>Dashboard</dt><dd>NOAA Temperature Forecast 2025</dd>
         </dl>
+        <div class="inline-code"><div class="code-file">TemperatureForecastTopology.java</div><pre><span class="c">// Overlapping 30-day histories produce a fresh daily forecast.</span>
+observations.selectKey((k,o) -&gt; o.stationId()).groupByKey()
+  .windowedBy(thirtyDays.advanceBy(oneDay))
+  <span class="c">// Update regression state, then extend its trend by 24 hours.</span>
+  .aggregate(TrendAggregate::<span class="k">new</span>,addReading)
+  .toStream().mapValues(t -&gt; t.latestFit()+t.slope()*86400);
+
+<span class="c">// Aggregate updates regression from running sums, not stored rows.</span>
+sumX += time; sumY += temp; sumXY += time*temp;
+slope = (count*sumXY - sumX*sumY) / denominator;</pre></div>
       </div>
       <div class="shot-wrap"><img class="shot" src="assets/Pattern7.png" alt="Pattern 7 temperature forecast dashboard"><span class="shot-cap">Trend + 24 h projection</span></div>
     </div></div>
@@ -569,12 +675,23 @@
     <div class="pat-head"><span class="pat-num">P8</span><h2 style="border:none;padding:0;margin:0">Caribbean maritime routing</h2><span class="owner">Mykola</span></div>
     <div class="content"><div class="cols">
       <div>
+        <span class="pattern-type">Pattern: Stream–stream join</span>
         <p>The only <b>stream-stream join</b>: AIS ship positions ⋈ NDBC buoy observations.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>Join key</dt><dd>Sea area (from lat/long bounding boxes)</dd>
           <dt>Window</dt><dd>30-min event-time join window</dd>
           <dt>Output</dt><dd><code>marine.route.recommendations</code></dd>
         </dl>
+        <div class="inline-code"><div class="code-file">MaritimeRoutingTopology.java</div><pre><span class="c">// Give ships and buoys the same sea-area key, so Kafka can
+// place matching records together for the join.</span>
+ais.selectKey((k,e) -&gt; e.seaAreaId())
+  <span class="c">// Join only events observed no more than 30 minutes apart.</span>
+  .join(buoys.selectKey((k,e) -&gt; e.seaAreaId()),
+    createRecommendation, JoinWindows.ofTimeDifferenceWithNoGrace(30m));
+
+<span class="c">// Helper converts joined buoy conditions into route risk.</span>
+risk = min(100, waveHeight*22 + windSpeed*2.5);
+delay = risk &gt;= 75 ? 90 : risk &gt;= 45 ? 30 : 0;</pre></div>
       </div>
       <div>
         <div class="callout green"><h4>Risk model</h4>
@@ -592,6 +709,7 @@
     <div class="pat-head"><span class="pat-num">P9</span><h2 style="border:none;padding:0;margin:0">Wet period detection</h2><span class="owner">Mykola</span></div>
     <div class="content"><div class="cols wide-left">
       <div>
+        <span class="pattern-type">Pattern: Stateful stream processor</span>
         <p>A <b>state machine</b> per station over the observation stream.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>Enter wet</dt><dd>First reading with <code>rainDuration &gt; 0</code></dd>
@@ -599,6 +717,16 @@
           <dt>Close</dt><dd>First dry reading → emit <code>WetPeriodEvent</code> (start, end, duration, count)</dd>
           <dt>State</dt><dd><b>Persistent key-value store</b> keyed by station</dd>
         </dl>
+        <div class="inline-code"><div class="code-file">WetDryPeriodTopology.java</div><pre><span class="c">// Key by station, so one Kafka task owns that station's state.</span>
+observations.selectKey((k,o) -&gt; o.stationId())
+  <span class="c">// Store the start while rain continues; on the first dry
+  // reading, delete the state and emit the completed period.</span>
+  .transform(WetDryTransformer::<span class="k">new</span>,
+    <span class="s">"wet-dry-period-state"</span>)
+  .filter((station,event) -&gt; event != null);
+
+<span class="c">// WetPeriodState keeps the original start and advances the count.</span>
+state = new WetPeriodState(station, periodStart, count + 1);</pre></div>
       </div>
       <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-11%20at%2012.43.43.png" alt="Pattern 9 wet period detection dashboard"><span class="shot-cap">Detected wet periods</span></div>
     </div></div>
@@ -610,12 +738,24 @@
     <div class="pat-head"><span class="pat-num">P10</span><h2 style="border:none;padding:0;margin:0">Blizzard detection</h2><span class="owner">Chris</span></div>
     <div class="content"><div class="cols wide-left">
       <div>
+        <span class="pattern-type">Pattern: Windowed event detection</span>
         <p>Detect blizzard-like conditions from combined thresholds.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd>Windowed detection: <b>freezing</b> (≤ 0 °C) <b>and</b> high wind (~12 m/s) within a 24 h window</dd>
           <dt>Output</dt><dd><code>blizzard-events</code></dd>
           <dt>Dashboard</dt><dd>NOAA Blizzard Events 2025</dd>
         </dl>
+        <div class="inline-code"><div class="code-file">BlizzardDetectionTopology.java</div><pre><span class="c">// Kafka checks overlapping 24 h histories for each station.</span>
+observations.selectKey((k,o) -&gt; o.stationId()).groupByKey()
+  .windowedBy(dayWindow.advanceBy(advance))
+  <span class="c">// Count freezing, strong-wind and precipitation evidence;
+  // publish the window only when every condition was observed.</span>
+  .aggregate(BlizzardAggregate::<span class="k">new</span>,addEvidence)
+  .toStream().filter((key,event) -&gt; event.isDetected());
+
+<span class="c">// Aggregate records evidence independently for every condition.</span>
+if (temp &lt;= 0) freezingCount++;
+if (wind &gt;= 12) strongWindCount++;</pre></div>
       </div>
       <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-06%20195120.png" alt="Pattern 10 blizzard events dashboard"><span class="shot-cap">Detected blizzard events</span></div>
     </div></div>
@@ -627,6 +767,7 @@
     <div class="pat-head"><span class="pat-num">P11</span><h2 style="border:none;padding:0;margin:0">Weather regime clustering (MOA)</h2><span class="owner">Florian · bonus</span></div>
     <div class="content"><div class="cols wide-left">
       <div>
+        <span class="pattern-type">Pattern: Online ML aggregation</span>
         <p><b>Online ML clustering</b> with MOA's <b>CluStream</b> to find weather regimes (Großwetterlagen).</p>
         <dl class="kv" style="margin-top:.5em">
           <dt>Features</dt><dd>avg temp, temp range, avg &amp; max wind, sky-clarity, rain duration</dd>
@@ -637,6 +778,13 @@
         <div class="callout purple" style="margin-top:.6em"><h4>Cluster → label</h4>
           <p class="muted" style="font-size:.92em"><code>cold_windy_wet</code> · <code>cold_windy_clear</code> · <code>mild_wet</code> · <code>mild_clear_breezy</code> · <code>hot_dry_clear</code> · <code>volatile_windy</code></p>
         </div>
+        <div class="inline-code" style="margin-top:.15em"><div class="code-file">WeatherRegimeTopology.java</div><pre><span class="c">// Build one daily weather feature vector per station.</span>
+observations.map((k,o) -&gt; pair(stationDay(o),o))
+  .groupByKey().aggregate(DailyFeatures::<span class="k">new</span>,addReading)
+  <span class="c">// Assign the vector, then use it to update the online model.</span>
+  .toStream().mapValues((day,f) -&gt; model.assignAndLearn(f.toVector()));
+<span class="c">// Clusterer normalizes values before incremental training.</span>
+clusterer.trainOnInstance(new DenseInstance(1.0, f.normalized()));</pre></div>
       </div>
       <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-11%20174357.png" alt="Pattern 11 weather regime clustering dashboard"><span class="shot-cap">Learned weather regimes per station</span></div>
     </div></div>
@@ -644,6 +792,377 @@
   </section>
 
   <!-- 22. CHALLENGES -->
+  <section class="slide code-slide">
+    <div class="pat-head"><span class="pat-num">P1</span><h2 style="border:none;padding:0;margin:0">Daily average temperature</h2></div>
+    <div class="content"><ul class="code-summary"><li><code>StationDayKey</code> combines station and date, so all readings for one station-day update the same Kafka state entry.</li><li>The aggregate stores only <code>sum</code> and <code>count</code>. Every new temperature increments both values.</li><li><code>averageTemperatureCelsius()</code> derives <code>sum / count</code>; the KTable therefore always represents the latest daily average.</li></ul><p class="code-importance"><strong>Why this matters:</strong> Kafka can restore sum and count from the changelog after a restart. It does not need the original readings or a previously rounded average to continue correctly.</p><div class="impl"><div>
+      <div class="code-file">DailyAverageTemperatureTopology.java</div>
+      <pre class="topology-build"><span class="code-java">public static KTable&lt;String, TemperatureAggregate&gt; build(</span>
+<span class="code-java">    KStream&lt;String, NoaaObservation&gt; observations) {</span>
+<span class="code-comment">  // One Kafka key represents one station and calendar day.</span>
+<span class="code-java">  return observations</span>
+<span class="code-java">    .filter((key, o) -&gt; isUsableObservation(o))</span>
+<span class="code-java">    .map((key, o) -&gt; KeyValue.pair(</span>
+<span class="code-java">        StationDayKey.fromObservation(o).asKey(), o))</span>
+<span class="code-java">    .groupByKey(Grouped.with(Serdes.String(), observationSerde))</span>
+<span class="code-comment">    // The materialized KTable stores the running average state.</span>
+<span class="code-java">    .aggregate(TemperatureAggregate::new,</span>
+<span class="code-java">        (stationDay, o, avg) -&gt; avg.add(o.temperatureCelsius()),</span>
+<span class="code-java">        Materialized.with(Serdes.String(), aggregateSerde));</span>
+<span class="code-java">}</span></pre>
+    </div><div class="takeaway"><div class="helper-title">TemperatureAggregate.add() / averageTemperatureCelsius()</div><pre><span class="c">// Example state for one station-day:
+// before: sum=10, count=1; new value=14</span>
+count++;
+sum += value;
+
+<span class="c">// after: sum=24, count=2; result=12 °C</span>
+return count == 0 ? 0.0 : sum / count;</pre></div></div></div>
+  </section>
+
+  <section class="slide code-slide">
+    <div class="pat-head"><span class="pat-num">P2</span><h2 style="border:none;padding:0;margin:0">Frost days per month</h2></div>
+    <div class="content"><ul class="code-summary"><li>The first <code>count()</code> stores the number of frost readings for each station-day: the same day can change from <code>1 → 2 → 3</code>.</li><li><code>groupBy(stationMonth)</code> converts every positive daily count to a monthly contribution of exactly <code>1</code>: it is still only one frost day.</li><li>When the daily row changes, Kafka updates the monthly total as <code>total − old contribution + new contribution</code>.</li></ul><p class="code-importance"><strong>Why this matters:</strong> If a day changes from 1 to 2 frost readings, its monthly contribution changes from <code>1 → 1</code>. Kafka calculates <code>10 − 1 + 1 = 10</code>; without subtraction it would incorrectly become 11 frost days.</p><div class="impl"><div>
+      <div class="code-file">MonthlyFrostDaysTopology.java</div>
+      <pre class="topology-build"><span class="code-java">public static KTable&lt;String, Long&gt; build(</span>
+<span class="code-java">    KStream&lt;String, NoaaObservation&gt; observations, int year) {</span>
+<span class="code-comment">  // First collapse many sub-zero readings into one station-day.</span>
+<span class="code-java">  KTable&lt;String, Long&gt; frostDays = observations</span>
+<span class="code-java">    .filter((key, o) -&gt; o.temperatureCelsius() &lt; 0.0)</span>
+<span class="code-java">    .map((key, o) -&gt; KeyValue.pair(stationDayKey(o), o))</span>
+<span class="code-java">    .groupByKey()</span>
+<span class="code-java">    .count();</span>
+<span class="code-java"></span>
+<span class="code-comment">  // Map every positive daily count to exactly one frost-day contribution.</span>
+<span class="code-java">  return frostDays</span>
+<span class="code-java">    .groupBy((day, count) -&gt;</span>
+<span class="code-java">        KeyValue.pair(stationMonthKey(day), 1L))</span>
+<span class="code-java">    .aggregate(() -&gt; 0L,</span>
+<span class="code-java">        (month, added, total) -&gt; total + added,</span>
+<span class="code-java">        (month, removed, total) -&gt; total - removed);</span>
+<span class="code-java">}</span></pre>
+    </div><div class="takeaway"><div class="helper-title">MonthlyFrostDaysTopology.build() — why subtract?</div><pre><span class="c">// Same day receives another frost reading:
+// daily count: 1 → 2
+// monthly contribution: 1 → 1</span>
+
+<span class="c">// Kafka first removes the old table value ...</span>
+(month, oldValue, total) -&gt; total - oldValue
+<span class="c">// ... and then adds the replacement value.</span>
+(month, newValue, total) -&gt; total + newValue
+
+<span class="c">// Example: 10 - 1 + 1 = 10 frost days.</span></pre></div></div></div>
+  </section>
+
+  <section class="slide code-slide">
+    <div class="pat-head"><span class="pat-num">P3</span><h2 style="border:none;padding:0;margin:0">Rapid temperature change</h2></div>
+    <div class="content"><ul class="code-summary"><li><code>selectKey(stationId)</code> and <code>windowedBy(...)</code> create independent 24-hour state for every station.</li><li>The first reading initializes <code>lastTemperature</code> and <code>lastObservedAt</code>. Each later reading is compared with that previous event.</li><li>The temperature difference is divided by the exact elapsed hours, producing comparable °C-per-hour rates even with irregular sampling.</li></ul><p class="code-importance"><strong>Why this matters:</strong> The pattern measures speed of change, not just temperature difference. A 6 °C change in one hour is more rapid than the same change over six hours.</p><div class="impl"><div>
+      <div class="code-file">RapidTemperatureChangeTopology.java</div>
+      <pre class="topology-build"><span class="code-java">public static KStream&lt;String, RapidTemperatureChangeEvent&gt; build(</span>
+<span class="code-java">    KStream&lt;String, NoaaObservation&gt; observations, int windowHours) {</span>
+<span class="code-java">  TimeWindows window =</span>
+<span class="code-java">      TimeWindows.ofSizeAndGrace(Duration.ofHours(windowHours), grace);</span>
+<span class="code-java"></span>
+<span class="code-comment">  // Kafka keeps one rate-of-change aggregate per station/window.</span>
+<span class="code-java">  return observations</span>
+<span class="code-java">    .selectKey((key, o) -&gt; o.stationId())</span>
+<span class="code-java">    .groupByKey()</span>
+<span class="code-java">    .windowedBy(window)</span>
+<span class="code-java">    .aggregate(RapidTemperatureChangeAggregate::new,</span>
+<span class="code-java">        (station, o, rates) -&gt; rates.add(o))</span>
+<span class="code-java">    .toStream()</span>
+<span class="code-java">    .map((windowedStation, rates) -&gt; toEvent(windowedStation, rates));</span>
+<span class="code-java">}</span></pre>
+    </div><div class="takeaway"><div class="helper-title">RapidTemperatureChangeAggregate.add()</div><pre><span class="c">// The first event only initializes the comparison state.</span>
+if (lastObservedAt != null) {
+  deltaTemp = currentTemp - lastTemperature;
+  hours = Duration.between(lastObservedAt, currentTime)
+      .toMillis() / 3_600_000.0;
+  rate = deltaTemp / hours;
+
+  minRate = Math.min(minRate, rate);
+  maxRate = Math.max(maxRate, rate);
+  sumRate += rate; rateCount++;
+}
+<span class="c">// Current becomes the reference for the next event.</span>
+lastTemperature = currentTemp;
+lastObservedAt = currentTime;</pre></div></div></div>
+  </section>
+
+  <section class="slide code-slide">
+    <div class="pat-head"><span class="pat-num">P4</span><h2 style="border:none;padding:0;margin:0">Tourism weather quality index</h2></div>
+    <div class="content"><ul class="code-summary"><li><code>regions.resolve(stationId)</code> maps stations to a tourism region; re-keying makes all stations in that region share one daily window.</li><li>The aggregate keeps sums and a count, then calculates regional averages for temperature, wind, and sky clarity.</li><li>Each average becomes a 0–100 comfort score. The final index weights temperature 55%, wind 25%, and clarity 20%.</li></ul><p class="code-importance"><strong>Why this matters:</strong> The result compares regions on one consistent scale instead of comparing raw values with different units such as °C, m/s, and percent clarity.</p><div class="impl"><div>
+      <div class="code-file">TourismWeatherQualityTopology.java</div>
+      <pre class="topology-build"><span class="code-java">public static KStream&lt;String, TourismWeatherQualityEvent&gt; build(</span>
+<span class="code-java">    KStream&lt;String, NoaaObservation&gt; observations,</span>
+<span class="code-java">    StationRegionResolver regions) {</span>
+<span class="code-comment">  // Re-key stations to regions before the daily aggregation.</span>
+<span class="code-java">  return observations</span>
+<span class="code-java">    .map((key, o) -&gt; KeyValue.pair(</span>
+<span class="code-java">        regions.resolve(o.stationId()).id(), o))</span>
+<span class="code-java">    .groupByKey()</span>
+<span class="code-java">    .windowedBy(dailyWindow)</span>
+<span class="code-java">    .aggregate(TourismWeatherQualityAggregate::new,</span>
+<span class="code-java">        (region, o, score) -&gt; score.add(o, regions.resolve(o.stationId())))</span>
+<span class="code-java">    .toStream()</span>
+<span class="code-java">    .map((windowedRegion, score) -&gt; toEvent(windowedRegion, score));</span>
+<span class="code-java">}</span></pre>
+    </div><div class="takeaway"><div class="helper-title">TourismWeatherQualityAggregate.qualityScore()</div><pre><span class="c">// Derive regional daily averages from running sums.</span>
+avgTemp = temperatureSum / observationCount;
+avgWind = windSpeedSum / observationCount;
+avgClarity = skyClaritySum / observationCount;
+
+<span class="c">// Convert different units to comparable 0–100 scores.</span>
+tempScore = Math.max(0, 100 - Math.abs(avgTemp - 22) * 6);
+windScore = Math.max(0, 100 - avgWind * 3.5);
+
+<span class="c">// 22 °C, low wind and clear sky produce a high index.</span>
+quality = tempScore * .55
+        + windScore * .25
+        + avgClarity * .20;</pre></div></div></div>
+  </section>
+
+  <section class="slide code-slide">
+    <div class="pat-head"><span class="pat-num">P5</span><h2 style="border:none;padding:0;margin:0">Average rain duration</h2></div>
+    <div class="content"><ul class="code-summary"><li>The filters keep only the selected year and observations with <code>rainDurationHours &gt; 0</code>; dry or missing values do not contribute.</li><li><code>StationYearKey</code> routes all rainy observations for one station and year to the same materialized state.</li><li>The aggregate stores total rain-duration hours and event count. Their division is the average duration of a reported rain period.</li></ul><p class="code-importance"><strong>Why this matters:</strong> This is not “rain hours divided by every weather reading.” It averages only observations that report rain duration, and Kafka can resume from total and count after a restart.</p><div class="impl"><div>
+      <div class="code-file">YearlyRainDurationTopology.java</div>
+      <pre class="topology-build"><span class="code-java">public static KTable&lt;String, RainDurationAggregate&gt; build(</span>
+<span class="code-java">    KStream&lt;String, NoaaObservation&gt; observations, int year) {</span>
+<span class="code-comment">  // Station-year is the key for the recoverable running state.</span>
+<span class="code-java">  return observations</span>
+<span class="code-java">    .filter((key, o) -&gt; o.rainDurationHours() != null</span>
+<span class="code-java">        &amp;&amp; o.rainDurationHours() &gt; 0)</span>
+<span class="code-java">    .filter((key, o) -&gt; o.observationDate().getYear() == year)</span>
+<span class="code-java">    .map((key, o) -&gt; KeyValue.pair(</span>
+<span class="code-java">        StationYearKey.fromObservation(o).asKey(), o))</span>
+<span class="code-java">    .groupByKey()</span>
+<span class="code-java">    .aggregate(RainDurationAggregate::new,</span>
+<span class="code-java">        (stationYear, o, rain) -&gt; rain.add(o.rainDurationHours()),</span>
+<span class="code-java">        Materialized.with(Serdes.String(), aggregateSerde));</span>
+<span class="code-java">}</span></pre>
+    </div><div class="takeaway"><div class="helper-title">RainDurationAggregate.add() / averageDurationHours()</div><pre><span class="c">// Example: reported rain durations 2h, 5h, 2h.</span>
+count++;
+totalDurationHours += durationHours;
+
+<span class="c">// State becomes total=9h, count=3.</span>
+return count == 0
+    ? 0.0
+    : (double) totalDurationHours / count; <span class="c">// 3h</span></pre></div></div></div>
+  </section>
+
+  <section class="slide code-slide">
+    <div class="pat-head"><span class="pat-num">P6</span><h2 style="border:none;padding:0;margin:0">Top-10 hottest &amp; coldest stations</h2></div>
+    <div class="content"><ul class="code-summary"><li>Kafka first keeps exactly one summary per station. <code>Math.min</code> and <code>Math.max</code> update that station’s lowest and highest temperature seen during the year.</li><li>The same station summary is sent to two lists: <code>coldest</code> compares its minimum, while <code>hottest</code> compares its maximum.</li><li>Before reinserting a changed station, its previous list entry is removed. Each station therefore appears at most once, with its current annual extreme.</li></ul><p class="code-importance"><strong>Why this matters:</strong> The result is the ten stations with the lowest annual minima and the ten stations with the highest annual maxima—not the ten latest readings. Each update only searches a list of at most ten candidates.</p><div class="impl"><div>
+      <div class="code-file">Topology + TemperatureWindowStats.add()</div>
+      <pre class="topology-build"><span class="code-comment">// 1. One continuously updated annual summary per station.</span>
+<span class="code-java">stationStats = observations</span>
+<span class="code-java">  .selectKey((key, o) -&gt; o.stationId())</span>
+<span class="code-java">  .groupByKey()</span>
+<span class="code-java">  .aggregate(TemperatureWindowStats::new,</span>
+<span class="code-java">      (station, o, stats) -&gt; stats.add(o));</span>
+<span class="code-java"></span>
+<span class="code-comment">// add(): retain this station's extremes, not every reading.</span>
+<span class="code-java">double temperature = observation.temperatureCelsius();</span>
+<span class="code-java">minTemperatureCelsius =</span>
+<span class="code-java">    Math.min(minTemperatureCelsius, temperature);</span>
+<span class="code-java">maxTemperatureCelsius =</span>
+<span class="code-java">    Math.max(maxTemperatureCelsius, temperature);</span></pre>
+    </div><div class="takeaway"><div class="helper-title">TemperatureRankingAggregate.update()</div><pre><span class="c">// 2. The candidate contains both annual station extremes.</span>
+updated = new RankedStation(
+    stats.getStationId(), stats.getCount(),
+    stats.getAverageTemperatureCelsius(),
+    stats.getMinTemperatureCelsius(),
+    stats.getMaxTemperatureCelsius());
+
+<span class="c">// Minimum orders the cold list; maximum orders the hot list.</span>
+updateTopTen(coldest, updated, coldestComparator());
+updateTopTen(hottest, updated, hottestComparator());
+
+<span class="c">// 3. Replace this station's stale list entry.</span>
+ranking.removeIf(s -&gt; s.stationId().equals(updated.stationId()));
+
+<span class="c">// Reinsert its new extreme and retain only ten stations.</span>
+position = binarySearch(ranking, updated, comparator);
+if (position &lt; 0) position = -position - 1;
+ranking.add(position, updated);
+if (ranking.size() &gt; 10) ranking.remove(10);</pre></div></div></div>
+  </section>
+
+  <section class="slide code-slide">
+    <div class="pat-head"><span class="pat-num">P7</span><h2 style="border:none;padding:0;margin:0">Temperature trend forecasting</h2></div>
+    <div class="content"><ul class="code-summary"><li>A 30-day window with <code>advanceBy(1 day)</code> creates a new overlapping forecast window each day for every station.</li><li>The aggregate stores five least-squares sums instead of all readings. From them, <code>getSlope()</code> calculates the temperature trend in °C per second.</li><li>The fitted value at the latest observation is treated as “now”; adding <code>slope × 86,400</code> projects that trend 24 hours forward.</li></ul><p class="code-importance"><strong>Why this matters:</strong> Anchoring at the latest fitted point avoids forecasting 24 hours from the window’s old average. The model uses event time and bounded regression state.</p><div class="impl"><div>
+      <div class="code-file">TemperatureForecastTopology.java</div>
+      <pre class="topology-build"><span class="code-java">public static KStream&lt;String, TemperatureForecastEvent&gt; build(</span>
+<span class="code-java">    KStream&lt;String, NoaaObservation&gt; observations) {</span>
+<span class="code-java">  TimeWindows window = TimeWindows</span>
+<span class="code-java">      .ofSizeAndGrace(Duration.ofDays(30), grace)</span>
+<span class="code-java">      .advanceBy(Duration.ofDays(1));</span>
+<span class="code-java"></span>
+<span class="code-comment">  // Each overlapping window maintains its own regression sums.</span>
+<span class="code-java">  return observations</span>
+<span class="code-java">    .selectKey((key, o) -&gt; o.stationId())</span>
+<span class="code-java">    .groupByKey()</span>
+<span class="code-java">    .windowedBy(window)</span>
+<span class="code-java">    .aggregate(TemperatureTrendAggregate::new,</span>
+<span class="code-java">        (station, o, trend) -&gt; trend.add(o))</span>
+<span class="code-java">    .toStream()</span>
+<span class="code-java">    .map((stationWindow, trend) -&gt; toForecast(stationWindow, trend));</span>
+<span class="code-java">}</span></pre>
+    </div><div class="takeaway"><div class="helper-title">TemperatureTrendAggregate + toForecast()</div><pre><span class="c">// Use time relative to the first event for stable numbers.</span>
+x = observedAt.toEpochSecond() - firstTimestamp;
+count++;
+sumX += x; sumY += temperature;
+sumXY += x * temperature;
+sumX2 += x * x;
+
+<span class="c">// Least-squares slope: temperature change per second.</span>
+slope = (count * sumXY - sumX * sumY)
+      / (count * sumX2 - sumX * sumX);
+
+<span class="c">// Start at the latest fitted value, then move ahead 24h.</span>
+latestFit = intercept + slope * lastRelativeX;
+forecastNext24h = latestFit + slope * 86_400;</pre></div></div></div>
+  </section>
+
+  <section class="slide code-slide">
+    <div class="pat-head"><span class="pat-num">P8</span><h2 style="border:none;padding:0;margin:0">Caribbean maritime routing</h2></div>
+    <div class="content"><ul class="code-summary"><li>Both streams are re-keyed by <code>seaAreaId</code>, so an AIS position can only meet buoy observations from the same sea area.</li><li>The stream–stream join additionally requires their event timestamps to differ by no more than the configured join window.</li><li>For each valid pair, wave height and wind speed produce a bounded risk score, risk class, route advice, and an adjusted ETA.</li></ul><p class="code-importance"><strong>Why this matters:</strong> Matching only by area could combine a current ship position with stale weather. The window makes the recommendation agree in both location and time.</p><div class="impl"><div>
+      <div class="code-file">MaritimeRoutingTopology.java</div>
+      <pre class="topology-build"><span class="code-java">public static KStream&lt;String, RouteRecommendationEvent&gt; build(</span>
+<span class="code-java">    KStream&lt;String, AisPositionEvent&gt; ais,</span>
+<span class="code-java">    KStream&lt;String, BuoyObservationEvent&gt; buoys) {</span>
+<span class="code-comment">  // Both streams need the same sea-area key for the join.</span>
+<span class="code-java">  KStream&lt;String, AisPositionEvent&gt; keyedAis =</span>
+<span class="code-java">      ais.selectKey((key, event) -&gt; event.seaAreaId());</span>
+<span class="code-java">  KStream&lt;String, BuoyObservationEvent&gt; keyedBuoys =</span>
+<span class="code-java">      buoys.selectKey((key, event) -&gt; event.seaAreaId());</span>
+<span class="code-java"></span>
+<span class="code-comment">  // Match ship and buoy events within the event-time interval.</span>
+<span class="code-java">  return keyedAis.join(keyedBuoys,</span>
+<span class="code-java">      (ship, buoy) -&gt; recommendation(ship, buoy, joinWindow),</span>
+<span class="code-java">      JoinWindows.ofTimeDifferenceWithNoGrace(joinWindow));</span>
+<span class="code-java">}</span></pre>
+    </div><div class="takeaway"><div class="helper-title">MaritimeRoutingTopology.recommendation()</div><pre><span class="c">// One joined pair: same sea area and nearby event time.</span>
+risk = Math.min(100,
+    buoy.waveHeightMeters() * 22
+  + buoy.windSpeedMetersPerSecond() * 2.5);
+
+riskClass = risk &gt;= 75 ? "HIGH"
+          : risk &gt;= 45 ? "MODERATE" : "LOW";
+
+etaDelayMinutes = switch (riskClass) {
+  case "HIGH" -&gt; 90;
+  case "MODERATE" -&gt; 30;
+  default -&gt; 0;
+};
+updatedEta = reportedEta.plus(
+    Duration.ofMinutes(etaDelayMinutes));</pre></div></div></div>
+  </section>
+
+  <section class="slide code-slide">
+    <div class="pat-head"><span class="pat-num">P9</span><h2 style="border:none;padding:0;margin:0">Wet period detection</h2></div>
+    <div class="content"><ul class="code-summary"><li><code>selectKey(stationId)</code> gives each station one independent state machine stored in a persistent Kafka key-value store.</li><li>The first wet reading creates state with start time and count. Further wet readings increment the count and emit nothing.</li><li>The first following dry reading calculates duration, deletes the open state, and emits exactly one completed <code>WetPeriodEvent</code>.</li></ul><p class="code-importance"><strong>Why this matters:</strong> Output is produced per complete wet period, not per rainy reading. Changelog-backed state preserves an unfinished period across processor restarts.</p><div class="impl"><div>
+      <div class="code-file">WetDryPeriodTopology.java</div>
+      <pre class="topology-build"><span class="code-java">public static KStream&lt;String, WetPeriodEvent&gt; build(</span>
+<span class="code-java">    KStream&lt;String, NoaaObservation&gt; observations, int year) {</span>
+<span class="code-comment">  // One station key owns one persistent wet/dry state machine.</span>
+<span class="code-java">  return observations</span>
+<span class="code-java">    .filter((key, o) -&gt; isUsableObservation(o, year))</span>
+<span class="code-java">    .selectKey((key, o) -&gt; o.stationId())</span>
+<span class="code-java">    .transform(WetDryPeriodTransformer::new,</span>
+<span class="code-java">        Named.as("wet-dry-period-detector"),</span>
+<span class="code-java">        "wet-dry-period-state")</span>
+<span class="code-comment">    // The transformer returns null until a wet period closes.</span>
+<span class="code-java">    .filter((station, event) -&gt; event != null);</span>
+<span class="code-java">}</span></pre>
+    </div><div class="takeaway"><div class="helper-title">WetDryPeriodTransformer.transform()</div><pre><span class="c">// Wet: create the period or increase its observation count.</span>
+if (isWet) {
+  store.put(station, state == null
+      ? new WetPeriodState(station, now, 1)
+      : state.addWetObservation());
+  return null;
+}
+
+<span class="c">// A dry reading without open state has nothing to close.</span>
+if (state == null) return null;
+
+<span class="c">// First dry reading closes and removes the persistent state.</span>
+store.delete(station);
+durationMinutes = Duration.between(state.periodStart(), now).toMinutes();
+return new WetPeriodEvent(
+    station, state.periodStart(), now, durationMinutes,
+    state.precipitationObservationCount(), now);</pre></div></div></div>
+  </section>
+
+  <section class="slide code-slide">
+    <div class="pat-head"><span class="pat-num">P10</span><h2 style="border:none;padding:0;margin:0">Blizzard detection</h2></div>
+    <div class="content"><ul class="code-summary"><li><code>windowedBy(...advanceBy...)</code> maintains overlapping 24-hour evidence state independently for each station.</li><li>Every reading may increment the freezing, strong-wind, or precipitation counter. The three signals may come from different readings inside the same window.</li><li><code>isDetected()</code> requires all three counters to be positive; cold and wind without precipitation are not classified as a blizzard.</li></ul><p class="code-importance"><strong>Why this matters:</strong> NOAA provides rain duration rather than an explicit snow signal. During freezing conditions it serves as a precipitation proxy, so this is a detection of blizzard-like conditions.</p><div class="impl"><div>
+      <div class="code-file">BlizzardDetectionTopology.java</div>
+      <pre class="topology-build"><span class="code-java">public static KStream&lt;String, BlizzardEvent&gt; build(</span>
+<span class="code-java">    KStream&lt;String, NoaaObservation&gt; observations) {</span>
+<span class="code-java">  TimeWindows window = TimeWindows</span>
+<span class="code-java">      .ofSizeAndGrace(Duration.ofHours(24), grace)</span>
+<span class="code-java">      .advanceBy(Duration.ofHours(advanceHours));</span>
+<span class="code-java"></span>
+<span class="code-comment">  // Aggregate threshold evidence inside each station/window.</span>
+<span class="code-java">  return observations</span>
+<span class="code-java">    .selectKey((key, o) -&gt; o.stationId())</span>
+<span class="code-java">    .groupByKey()</span>
+<span class="code-java">    .windowedBy(window)</span>
+<span class="code-java">    .aggregate(BlizzardWindowAggregate::new, addEvidence)</span>
+<span class="code-java">    .toStream()</span>
+<span class="code-java">    .map((stationWindow, evidence) -&gt; toEvent(stationWindow, evidence))</span>
+<span class="code-java">    .filter((key, event) -&gt; event.isDetected());</span>
+<span class="code-java">}</span></pre>
+    </div><div class="takeaway"><div class="helper-title">BlizzardWindowAggregate.add() + BlizzardEvent.isDetected()</div><pre><span class="c">// Different records may contribute different evidence.</span>
+if (temp &lt;= freezingThreshold) freezingCount++;
+if (wind &gt;= strongWindThreshold) strongWindCount++;
+if (rainDuration &gt; 0) precipitationCount++;
+
+<span class="c">// Example: cold at 08:00, rain at 10:00, wind at 14:00
+// still satisfies one shared station/window.</span>
+boolean isDetected() {
+  return freezingCount &gt; 0
+      &amp;&amp; strongWindCount &gt; 0
+      &amp;&amp; precipitationCount &gt; 0;
+}</pre></div></div></div>
+  </section>
+
+  <section class="slide code-slide">
+    <div class="pat-head"><span class="pat-num">P11</span><h2 style="border:none;padding:0;margin:0">Weather regime clustering (MOA)</h2></div>
+    <div class="content"><ul class="code-summary"><li>The first aggregate reduces all readings of one station-day to six features: average and range of temperature, average and maximum wind, clarity, and rain duration.</li><li><code>normalized()</code> maps every feature to 0–1, preventing large-unit values from dominating Euclidean distance.</li><li><code>assignAndLearn(...)</code> updates CluStream with the daily vector, finds its nearest micro-cluster, and maps that center to a readable weather-regime label.</li></ul><p class="code-importance"><strong>Why this matters:</strong> Kafka emits one meaningful daily vector instead of clustering every raw reading. The online model adapts one vector at a time without storing and retraining the full history.</p><div class="impl"><div>
+      <div class="code-file">WeatherRegimeTopology.java</div>
+      <pre class="topology-build"><span class="code-java">public static KStream&lt;String, WeatherRegimeEvent&gt; build(</span>
+<span class="code-java">    KStream&lt;String, NoaaObservation&gt; observations) {</span>
+<span class="code-java">  OnlineWeatherRegimeClusterer model =</span>
+<span class="code-java">      new OnlineWeatherRegimeClusterer(clusterCount, horizon);</span>
+<span class="code-java"></span>
+<span class="code-comment">  // First produce one feature vector per station and day.</span>
+<span class="code-java">  return observations</span>
+<span class="code-java">    .map((key, o) -&gt; KeyValue.pair(stationDayKey(o), o))</span>
+<span class="code-java">    .groupByKey()</span>
+<span class="code-java">    .aggregate(StationDayWeatherAggregate::new,</span>
+<span class="code-java">        (day, o, features) -&gt; features.add(o))</span>
+<span class="code-java">    .toStream()</span>
+<span class="code-java">    .filter((day, features) -&gt; features.hasEnoughSignal())</span>
+<span class="code-comment">    // Assign the vector and immediately update the online model.</span>
+<span class="code-java">    .mapValues((day, features) -&gt;</span>
+<span class="code-java">        toEvent(day, model.assignAndLearn(features.toFeatureVector())));</span>
+<span class="code-java">}</span></pre>
+    </div><div class="takeaway"><div class="helper-title">Feature vector + assignAndLearn()</div><pre><span class="c">// One station-day becomes six comparable signals.</span>
+features = new FeatureVector(
+    avgTemp, tempRange, avgWind,
+    maxWind, skyClarity, rainHours);
+point = features.normalized(); <span class="c">// every value: 0..1</span>
+
+<span class="c">// Update micro-clusters with this day; no batch retraining.</span>
+clusterer.trainOnInstance(new DenseInstance(1.0, point));
+clusters = clusterer.getMicroClusteringResult();
+
+<span class="c">// Explain the numeric cluster with the nearest archetype.</span>
+nearest = nearestMicroCluster(point, clusters);
+center = clusters.get(nearest).getCenter();
+label = LABELS[nearestArchetype(center)];</pre></div></div></div>
+  </section>
+
+  <!-- 33. CHALLENGES -->
   <section class="slide">
     <h2>Challenges</h2>
     <div class="content">
@@ -756,6 +1275,15 @@
 </div>
 
 <script>
+
+  // Pair every explanation slide with its implementation slide.
+  const patternSlides = Array.from(document.querySelectorAll('.slide'))
+    .filter((slide) => !slide.classList.contains('code-slide') && slide.querySelector('.pat-num'));
+  const implementationSlides = Array.from(document.querySelectorAll('.code-slide'));
+  patternSlides.forEach((patternSlide, index) => {
+    const implementationSlide = implementationSlides[index];
+    if (implementationSlide) patternSlide.after(implementationSlide);
+  });
   const slides = Array.from(document.querySelectorAll('.slide'));
   const progress = document.getElementById('progress');
   const counter = document.getElementById('counter');
