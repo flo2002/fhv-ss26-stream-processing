@@ -41,6 +41,8 @@ public class BlizzardWindowAggregate {
         }
 
         if (observation.rainDurationHours() != null && observation.rainDurationHours() > 0) {
+            // The NOAA input has no explicit snow field. During freezing
+            // conditions, rain duration acts as the available precipitation proxy.
             precipitationObservationCount++;
         }
 

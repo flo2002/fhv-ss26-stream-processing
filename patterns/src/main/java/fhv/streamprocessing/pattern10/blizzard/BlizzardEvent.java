@@ -18,6 +18,8 @@ public record BlizzardEvent(
     double maxWindSpeedMetersPerSecond
 ) {
     public boolean isDetected() {
+        // Cold and wind alone describe a storm; precipitation is also required
+        // so that the event represents blizzard-like conditions.
         return freezingObservationCount > 0
             && strongWindObservationCount > 0
             && precipitationObservationCount > 0;
