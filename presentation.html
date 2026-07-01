@@ -475,6 +475,7 @@
         <p>Average temperature <b>per station per day</b> across 2025.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd><code>groupByKey</code>(station+day) → <code>aggregate</code> → <b>KTable</b> of running averages</dd>
+          <dt>Why daily</dt><dd>Creates comparable calendar-day results without smoothing the complete year into one value</dd>
           <dt>Output</dt><dd><code>daily-average-temperature</code></dd>
           <dt>Dashboard</dt><dd>NOAA Kafka Stream Processing</dd>
         </dl>
@@ -504,6 +505,7 @@ average = sum / count;</pre></div>
         <p>Count <b>frost days</b> (<code>temp &lt; 0 °C</code>) per station and month.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd>Predicate count; each frost <b>day counted once</b>, then aggregated per month</dd>
+          <dt>Why monthly</dt><dd>Shows seasonal frost frequency while preventing frequent station reports from inflating the result</dd>
           <dt>Output</dt><dd><code>monthly-frost-days</code></dd>
           <dt>Dashboard</dt><dd>NOAA Frost Days 2025</dd>
         </dl>
@@ -532,6 +534,7 @@ stationMonth = stationId + "|" + YearMonth.from(day);</pre></div>
         <p>Detect sudden warming/cooling — e.g. passing weather fronts.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd>Rate of change <b>°C/h</b> between consecutive readings, aggregated over a <b>tumbling 24 h window</b> → min / max / avg</dd>
+          <dt>Why 24 h</dt><dd>A weather front is a short episode; a yearly window would hide rapid changes inside one large summary</dd>
           <dt>Output</dt><dd><code>rapid-temperature-change</code></dd>
           <dt>Dashboard</dt><dd>NOAA Rapid Temperature Change 2025</dd>
         </dl>
@@ -561,6 +564,7 @@ ratePerHour = (temperature - lastTemperature) / elapsedHours;</pre></div>
           <dt>Inputs</dt><dd>Temperature, wind, visibility → sky-clarity proxy</dd>
           <dt>Region</dt><dd>From ISD station metadata (e.g. <code>US-CA</code>)</dd>
           <dt>Window</dt><dd>Tumbling 24 h</dd>
+          <dt>Why daily</dt><dd>Tourism conditions are experienced per day; a yearly score would hide individual good and poor days</dd>
           <dt>Output</dt><dd><code>tourism-weather-quality</code></dd>
         </dl>
         <div class="inline-code"><div class="code-file">TourismWeatherQualityTopology.java</div><pre><span class="c">// Replace the station key with its region, so Kafka processes
@@ -593,6 +597,7 @@ quality = tempScore*.55 + windScore*.25 + skyScore*.20;</pre></div>
         <p>Average precipitation duration per station for 2025.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd>Aggregation over parsed rain-duration values → yearly average</dd>
+          <dt>Why full year</dt><dd>The task asks for one historical 2025 average per station, so a station-year key is sufficient</dd>
           <dt>Output</dt><dd><code>yearly-average-rain-duration</code></dd>
           <dt>Dashboard</dt><dd>Average rain duration 2025</dd>
         </dl>
@@ -622,7 +627,7 @@ averageHours = totalHours / count;</pre></div>
         <p>Rank stations by <b>peak temperature</b> in 2025.</p>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd>Update station statistics → binary insert into sorted <b>Top-10 / Bottom-10</b> lists</dd>
-          <dt>Why full year</dt><dd>Data is historical, not a live-growing stream</dd>
+          <dt>Why full year</dt><dd>The goal is one ranking of each station’s minimum and maximum across the complete year 2025</dd>
           <dt>Output</dt><dd><code>daily-temperature-ranking</code></dd>
           <dt>Dashboard</dt><dd>NOAA Temperature Ranking 2025</dd>
         </dl>
@@ -651,6 +656,7 @@ ranking.update(updatedStation);</pre></div>
         <dl class="kv" style="margin-top:.6em">
           <dt>How</dt><dd>Least-squares slope over a <b>30-day sliding window</b> advancing 1 day</dd>
           <dt>Forecast</dt><dd>Project the line <b>+24 h</b> from the latest reading</dd>
+          <dt>Why 30 days</dt><dd>Long enough for a stable trend, but short enough to react; daily advance refreshes the forecast</dd>
           <dt>Output</dt><dd><code>temperature-forecast</code></dd>
           <dt>Dashboard</dt><dd>NOAA Temperature Forecast 2025</dd>
         </dl>
@@ -680,6 +686,7 @@ slope = (count*sumXY - sumX*sumY) / denominator;</pre></div>
         <dl class="kv" style="margin-top:.6em">
           <dt>Join key</dt><dd>Sea area (from lat/long bounding boxes)</dd>
           <dt>Window</dt><dd>30-min event-time join window</dd>
+          <dt>Why 30 min</dt><dd>Area alone is insufficient; the buoy conditions must also be close to the vessel observation in time</dd>
           <dt>Output</dt><dd><code>marine.route.recommendations</code></dd>
         </dl>
         <div class="inline-code"><div class="code-file">MaritimeRoutingTopology.java</div><pre><span class="c">// Give ships and buoys the same sea-area key, so Kafka can
@@ -716,6 +723,7 @@ delay = risk &gt;= 75 ? 90 : risk &gt;= 45 ? 30 : 0;</pre></div>
           <dt>Stay open</dt><dd>While precipitation continues</dd>
           <dt>Close</dt><dd>First dry reading → emit <code>WetPeriodEvent</code> (start, end, duration, count)</dd>
           <dt>State</dt><dd><b>Persistent key-value store</b> keyed by station</dd>
+          <dt>Why no window</dt><dd>The duration is unknown until rain stops; fixed windows could split one continuous wet period</dd>
         </dl>
         <div class="inline-code"><div class="code-file">WetDryPeriodTopology.java</div><pre><span class="c">// Key by station, so one Kafka task owns that station's state.</span>
 observations.selectKey((k,o) -&gt; o.stationId())
@@ -739,9 +747,11 @@ state = new WetPeriodState(station, periodStart, count + 1);</pre></div>
     <div class="content"><div class="cols wide-left">
       <div>
         <span class="pattern-type">Pattern: Windowed event detection</span>
-        <p>Detect blizzard-like conditions from combined thresholds.</p>
+        <p>Detect blizzard-like episodes from <b>cold, strong wind, and precipitation</b>.</p>
         <dl class="kv" style="margin-top:.6em">
-          <dt>How</dt><dd>Windowed detection: <b>freezing</b> (≤ 0 °C) <b>and</b> high wind (~12 m/s) within a 24 h window</dd>
+          <dt>How</dt><dd>All three signals may occur in different readings inside one overlapping 24 h station window</dd>
+          <dt>Why 24 h</dt><dd>Keeps evidence inside one weather episode; a yearly window could combine unrelated events months apart</dd>
+          <dt>Snow proxy</dt><dd>NOAA has no explicit snow field, so rain duration supplies the precipitation signal</dd>
           <dt>Output</dt><dd><code>blizzard-events</code></dd>
           <dt>Dashboard</dt><dd>NOAA Blizzard Events 2025</dd>
         </dl>
@@ -755,11 +765,12 @@ observations.selectKey((k,o) -&gt; o.stationId()).groupByKey()
 
 <span class="c">// Aggregate records evidence independently for every condition.</span>
 if (temp &lt;= 0) freezingCount++;
-if (wind &gt;= 12) strongWindCount++;</pre></div>
+if (wind &gt;= 12) strongWindCount++;
+if (rainDuration &gt; 0) precipitationCount++;</pre></div>
       </div>
       <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-06%20195120.png" alt="Pattern 10 blizzard events dashboard"><span class="shot-cap">Detected blizzard events</span></div>
     </div></div>
-    <aside class="notes"><b>Notes:</b> Multi-condition windowed event detection — combines two parsed dimensions (temperature + wind) with configurable thresholds.</aside>
+    <aside class="notes"><b>Notes:</b> The 24-hour window keeps the three signals within one plausible weather episode. Hopping windows reduce boundary effects. Rain duration is a precipitation proxy because the source has no explicit snow field.</aside>
   </section>
 
   <!-- 21. PATTERN 11 -->
@@ -772,6 +783,7 @@ if (wind &gt;= 12) strongWindCount++;</pre></div>
         <dl class="kv" style="margin-top:.5em">
           <dt>Features</dt><dd>avg temp, temp range, avg &amp; max wind, sky-clarity, rain duration</dd>
           <dt>Scaling</dt><dd>Min-max normalized to 0–1</dd>
+          <dt>Why daily</dt><dd>One station-day vector reduces raw-reading noise and gives each learned regime a meaningful time grain</dd>
           <dt>Output</dt><dd><code>weather-regimes</code></dd>
           <dt>Dashboard</dt><dd>NOAA Weather Regimes 2025</dd>
         </dl>
