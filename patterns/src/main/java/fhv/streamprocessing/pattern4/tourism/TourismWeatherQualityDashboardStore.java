@@ -6,6 +6,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 
+/**
+ * Writes tourism weather quality results to dashboard tables using stable, replay-safe keys.
+ */
 public class TourismWeatherQualityDashboardStore implements AutoCloseable {
     private final PreparedStatement upsertTourismQuality;
 

@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern4.tourism;
 
 import java.util.Map;
 
+/**
+ * Resolves a station identifier to the region key used for Kafka grouping.
+ */
 public final class StationRegionResolver {
     private final Map<String, WeatherRegion> regionsByStationId;
 

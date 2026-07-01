@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern6.temperatureranking;
 
 import java.time.Instant;
 
+/**
+ * Composite business key for ranking window state and output records.
+ */
 public record RankingWindowKey(long windowStartEpochMs, long windowEndEpochMs) {
     public static RankingWindowKey parse(String key) {
         String[] parts = key.split("\\|", 2);

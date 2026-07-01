@@ -1,5 +1,8 @@
 package fhv.streamprocessing.pattern6.temperatureranking;
 
+/**
+ * Serializable statistics snapshot used while calculating station window temperature.
+ */
 public class StationWindowTemperatureStats {
     private String stationId;
     private long windowStartEpochMs;

@@ -3,6 +3,9 @@ package fhv.streamprocessing.pattern1.temperature;
 import fhv.streamprocessing.model.NoaaObservation;
 import java.time.LocalDate;
 
+/**
+ * Composite business key for station day state and output records.
+ */
 public record StationDayKey(String stationId, LocalDate day) {
     public static StationDayKey fromObservation(NoaaObservation observation) {
         return new StationDayKey(observation.stationId(), observation.observationDate());

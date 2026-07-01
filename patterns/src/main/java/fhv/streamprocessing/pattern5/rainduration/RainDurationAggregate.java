@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern5.rainduration;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
+/**
+ * Mutable Kafka Streams state used to incrementally calculate rain duration.
+ */
 public class RainDurationAggregate {
     private long count;
     private long totalDurationHours;
@@ -10,6 +13,8 @@ public class RainDurationAggregate {
     }
 
     public RainDurationAggregate add(Integer durationHours) {
+        // Kafka persists both values, allowing the average to continue exactly
+        // after a restart instead of averaging already-rounded averages.
         count++;
         totalDurationHours += durationHours;
         return this;

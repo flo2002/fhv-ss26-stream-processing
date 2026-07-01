@@ -10,6 +10,10 @@ import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.kstream.TimeWindows;
 
+/**
+ * Kafka implementation: accumulates threshold evidence per station in
+ * overlapping event-time windows and emits only detected blizzard events.
+ */
 public final class BlizzardDetectionTopology {
     public static final String EVENT_TYPE = "blizzard-like-conditions";
 
@@ -25,16 +29,19 @@ public final class BlizzardDetectionTopology {
         int advanceHours,
         int graceMinutes
     ) {
+        // Sliding windows allow an event to be detected across overlapping 24-hour periods.
         TimeWindows detectionWindow = TimeWindows.ofSizeAndGrace(Duration.ofHours(windowHours), Duration.ofMinutes(graceMinutes))
             .advanceBy(Duration.ofHours(advanceHours));
 
         return observations
+            // Keep events that can contribute at least one detection signal.
             .filter((key, observation) -> observation.stationId() != null && observation.observedAt() != null)
             .filter((key, observation) -> observation.observedAt().getYear() == detectionYear)
             .filter((key, observation) -> hasAnyRelevantSignal(observation))
             .selectKey((key, observation) -> observation.stationId())
             .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)))
             .windowedBy(detectionWindow)
+            // Track threshold evidence inside each station/window, not just single readings.
             .aggregate(
                 BlizzardWindowAggregate::new,
                 (stationId, observation, aggregate) -> aggregate.add(
@@ -45,6 +52,7 @@ public final class BlizzardDetectionTopology {
                 Materialized.with(Serdes.String(), new JsonSerde<>(BlizzardWindowAggregate.class))
             )
             .toStream()
+            // Windowed KTable updates become output events with stable string keys.
             .map((windowedStationId, aggregate) -> {
                 StationBlizzardWindowKey eventKey = new StationBlizzardWindowKey(
                     windowedStationId.key(),
@@ -67,6 +75,7 @@ public final class BlizzardDetectionTopology {
                 );
                 return KeyValue.pair(eventKey.asKey(), event);
             })
+            // Suppress intermediate windows until all conditions satisfy the detection rule.
             .filter((eventKey, event) -> event.isDetected());
     }
 

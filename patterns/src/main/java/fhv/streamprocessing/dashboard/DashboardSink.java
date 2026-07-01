@@ -11,6 +11,9 @@ import fhv.streamprocessing.pattern8.maritime.RouteRecommendationEvent;
 import fhv.streamprocessing.pattern9.wetdry.WetPeriodEvent;
 import fhv.streamprocessing.pattern11.weatherregime.WeatherRegimeEvent;
 
+/**
+ * Abstraction used by stream processors to publish operational counters and pattern results.
+ */
 public interface DashboardSink extends AutoCloseable {
     void incrementRawRequests();
 

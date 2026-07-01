@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern3.rapidchange;
 
 import java.time.Instant;
 
+/**
+ * Composite business key for station rapid change window state and output records.
+ */
 public record StationRapidChangeWindowKey(
     String stationId,
     long windowStartEpochMs,

@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern4.tourism;
 
 import fhv.streamprocessing.model.NoaaObservation;
 
+/**
+ * Mutable Kafka Streams state used to incrementally calculate tourism weather quality.
+ */
 public class TourismWeatherQualityAggregate {
     private String regionId;
     private String regionName;
@@ -53,6 +56,8 @@ public class TourismWeatherQualityAggregate {
         if (observationCount == 0) {
             return 0.0;
         }
+        // Convert the three differently scaled measurements to 0-100 sub-scores
+        // before applying the documented tourism-comfort weights.
         double temperatureScore = Math.max(0.0, 100.0 - Math.abs(avgTemperatureCelsius() - 22.0) * 6.0);
         double windScore = Math.max(0.0, 100.0 - avgWindSpeedMetersPerSecond() * 3.5);
         return round1(temperatureScore * 0.55 + windScore * 0.25 + avgSkyClarityScore() * 0.20);

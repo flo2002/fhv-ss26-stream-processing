@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern11.weatherregime;
 
 import fhv.streamprocessing.model.NoaaObservation;
 
+/**
+ * Accumulates the daily weather signals that become one clustering feature vector.
+ */
 public class StationDayWeatherAggregate {
     private double temperatureSum;
     private double minTemperatureCelsius = Double.POSITIVE_INFINITY;

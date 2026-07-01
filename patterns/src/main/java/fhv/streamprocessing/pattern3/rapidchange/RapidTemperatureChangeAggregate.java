@@ -4,6 +4,9 @@ import fhv.streamprocessing.model.NoaaObservation;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 
+/**
+ * Mutable Kafka Streams state used to incrementally calculate rapid temperature change.
+ */
 public class RapidTemperatureChangeAggregate {
     private Double lastTemperature;
     private OffsetDateTime lastObservedAt;
@@ -22,11 +25,14 @@ public class RapidTemperatureChangeAggregate {
         }
 
         if (lastObservedAt != null && lastTemperature != null) {
+            // Compare with the previous event kept in this window's state.
             double deltaTemp = observation.temperatureCelsius() - lastTemperature;
             Duration deltaTime = Duration.between(lastObservedAt, observation.observedAt());
             
             if (!deltaTime.isZero() && !deltaTime.isNegative()) {
                 double hours = deltaTime.toMillis() / 3600000.0;
+                // Normalizing by elapsed hours makes irregular NOAA sampling
+                // intervals comparable as one °C-per-hour rate.
                 double rate = deltaTemp / hours;
 
                 if (rateOfChangeCount == 0) {

@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern1.temperature;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
+/**
+ * Stores the running sum and count required for one station-day temperature average.
+ */
 public class TemperatureAggregate {
     private long count;
     private double sum;
@@ -10,6 +13,8 @@ public class TemperatureAggregate {
     }
 
     public TemperatureAggregate add(Double value) {
+        // Kafka Streams restores these two fields from the state-store changelog
+        // and calls add() once for every new temperature in this station-day.
         count++;
         sum += value;
         return this;
@@ -33,6 +38,8 @@ public class TemperatureAggregate {
 
     @JsonIgnore
     public double averageTemperatureCelsius() {
+        // Derive the average from stored sum and count instead of storing a
+        // rounded average that would lose precision after every update.
         return count == 0 ? 0.0 : sum / count;
     }
 }

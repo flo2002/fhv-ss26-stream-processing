@@ -6,6 +6,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 
+/**
+ * Writes yearly rain duration results to dashboard tables using stable, replay-safe keys.
+ */
 public class YearlyRainDurationDashboardStore implements AutoCloseable {
     private final PreparedStatement upsertYearlyRainDuration;
 

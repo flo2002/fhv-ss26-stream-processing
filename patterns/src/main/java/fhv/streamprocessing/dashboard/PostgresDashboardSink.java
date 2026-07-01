@@ -26,6 +26,9 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
+/**
+ * PostgreSQL implementation of the dashboard sink, including schema setup and idempotent writes.
+ */
 public class PostgresDashboardSink implements DashboardSink {
     private final Connection connection;
     private final PreparedStatement incrementCounter;

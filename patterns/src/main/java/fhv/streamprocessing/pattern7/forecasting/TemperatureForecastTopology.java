@@ -11,6 +11,10 @@ import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.kstream.TimeWindows;
 
+/**
+ * Kafka implementation: maintains least-squares regression state in
+ * overlapping event-time windows and emits a 24-hour projection.
+ */
 public final class TemperatureForecastTopology {
     private TemperatureForecastTopology() {
     }
@@ -21,6 +25,7 @@ public final class TemperatureForecastTopology {
         int advanceDays,
         int graceMinutes
     ) {
+        // advanceBy makes this a sliding/hopping window instead of a tumbling window.
         TimeWindows window = TimeWindows.ofSizeAndGrace(Duration.ofDays(windowDays), Duration.ofMinutes(graceMinutes))
             .advanceBy(Duration.ofDays(advanceDays));
 
@@ -30,6 +35,7 @@ public final class TemperatureForecastTopology {
             .selectKey((key, observation) -> observation.stationId())
             .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)))
             .windowedBy(window)
+            // The aggregate stores the sums needed for online least-squares regression.
             .aggregate(
                 TemperatureTrendAggregate::new,
                 (stationId, observation, aggregate) -> aggregate.add(observation),
@@ -43,6 +49,7 @@ public final class TemperatureForecastTopology {
                     Instant.ofEpochMilli(windowedStationId.window().end())
                 );
 
+                // Slope is degrees per second because observation timestamps are epoch seconds.
                 double slope = aggregate.getSlope();
                 double currentAverage = aggregate.getLatestAverage();
                 // Anchor the forecast at the fitted value of the latest observation ("now"),

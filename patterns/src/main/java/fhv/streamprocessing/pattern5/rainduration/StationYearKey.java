@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern5.rainduration;
 
 import fhv.streamprocessing.model.NoaaObservation;
 
+/**
+ * Composite business key for station year state and output records.
+ */
 public record StationYearKey(String stationId, int year) {
     public static StationYearKey fromObservation(NoaaObservation observation) {
         return new StationYearKey(observation.stationId(), observation.observationDate().getYear());

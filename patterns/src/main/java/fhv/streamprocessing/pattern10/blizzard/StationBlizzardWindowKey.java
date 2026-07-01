@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern10.blizzard;
 
 import java.time.Instant;
 
+/**
+ * Composite business key for station blizzard window state and output records.
+ */
 public record StationBlizzardWindowKey(
     String stationId,
     long windowStartEpochMs,

@@ -6,6 +6,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 
+/**
+ * Writes rapid temperature change results to dashboard tables using stable, replay-safe keys.
+ */
 public class RapidTemperatureChangeDashboardStore implements AutoCloseable {
     private final Connection connection;
     private final PreparedStatement upsertRapidChangeEvent;

@@ -7,6 +7,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 
+/**
+ * Writes daily average temperature results to dashboard tables using stable, replay-safe keys.
+ */
 public class DailyAverageTemperatureDashboardStore implements AutoCloseable {
     private final PreparedStatement upsertDailyAverage;
 

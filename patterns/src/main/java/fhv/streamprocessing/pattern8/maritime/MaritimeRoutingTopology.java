@@ -7,6 +7,10 @@ import org.apache.kafka.streams.kstream.JoinWindows;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.StreamJoined;
 
+/**
+ * Kafka implementation: co-keys AIS and buoy streams by sea area and performs
+ * a windowed stream-stream join before calculating the route recommendation.
+ */
 public final class MaritimeRoutingTopology {
     private MaritimeRoutingTopology() {
     }
@@ -17,6 +21,7 @@ public final class MaritimeRoutingTopology {
         int routingYear,
         int joinWindowMinutes
     ) {
+        // Both input streams must use the same sea-area key before Kafka can join them.
         KStream<String, AisPositionEvent> keyedAis = aisPositions
             .filter((key, event) -> event != null && event.observedAt() != null && event.seaAreaId() != null)
             .filter((key, event) -> event.observedAt().atZone(ZoneOffset.UTC).getYear() == routingYear)
@@ -27,6 +32,7 @@ public final class MaritimeRoutingTopology {
             .filter((key, event) -> event.observedAt().atZone(ZoneOffset.UTC).getYear() == routingYear)
             .selectKey((key, event) -> event.seaAreaId());
 
+        // Match vessel and buoy events whose event timestamps fall within this interval.
         Duration joinWindow = Duration.ofMinutes(joinWindowMinutes);
         return keyedAis.join(
             keyedBuoys,
@@ -45,6 +51,8 @@ public final class MaritimeRoutingTopology {
         BuoyObservationEvent buoy,
         Duration joinWindow
     ) {
+        // The join supplies one ship and one nearby-in-time buoy observation.
+        // Convert their wave/wind signals into a bounded dashboard risk score.
         double riskScore = Math.min(100.0, (buoy.waveHeightMeters() * 22.0) + (buoy.windSpeedMetersPerSecond() * 2.5));
         String riskClass = riskClass(riskScore);
         long etaDelayMinutes = etaDelayMinutes(riskClass);

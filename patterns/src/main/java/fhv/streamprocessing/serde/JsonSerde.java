@@ -10,6 +10,9 @@ import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serializer;
 
+/**
+ * Jackson-based Kafka serializer/deserializer for JSON domain objects and state-store values.
+ */
 public class JsonSerde<T> implements Serde<T> {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
         .registerModule(new JavaTimeModule())

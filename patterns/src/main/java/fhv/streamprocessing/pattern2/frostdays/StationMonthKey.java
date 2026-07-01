@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern2.frostdays;
 
 import java.time.YearMonth;
 
+/**
+ * Composite business key for station month state and output records.
+ */
 public record StationMonthKey(String stationId, YearMonth month) {
     public static StationMonthKey parse(String key) {
         String[] parts = key.split("\\|", 2);

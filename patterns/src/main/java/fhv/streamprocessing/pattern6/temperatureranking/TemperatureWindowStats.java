@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern6.temperatureranking;
 
 import fhv.streamprocessing.model.NoaaObservation;
 
+/**
+ * Serializable statistics snapshot used while calculating temperature window.
+ */
 public class TemperatureWindowStats {
     private long count;
     private double sum;

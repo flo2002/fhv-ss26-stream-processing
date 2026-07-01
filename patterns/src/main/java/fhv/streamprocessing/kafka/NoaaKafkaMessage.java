@@ -7,6 +7,9 @@ import fhv.streamprocessing.model.NoaaObservation;
 import java.time.OffsetDateTime;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
+/**
+ * Transport model for raw NOAA records received from the Kafka input topic.
+ */
 public record NoaaKafkaMessage(
     @JsonProperty("schema_version") int schemaVersion,
     Source source,

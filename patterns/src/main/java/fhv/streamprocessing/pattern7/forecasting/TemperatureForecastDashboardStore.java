@@ -6,6 +6,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 
+/**
+ * Writes temperature forecast results to dashboard tables using stable, replay-safe keys.
+ */
 public class TemperatureForecastDashboardStore implements AutoCloseable {
     private final Connection connection;
     private final PreparedStatement upsertForecast;

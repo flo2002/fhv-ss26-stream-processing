@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern4.tourism;
 
 import java.time.Instant;
 
+/**
+ * Composite business key for region window state and output records.
+ */
 public record RegionWindowKey(
     String regionId,
     Instant windowStart,

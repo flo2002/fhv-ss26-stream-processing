@@ -7,6 +7,9 @@ import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.util.List;
 
+/**
+ * Writes annual peak temperature ranking results to dashboard tables using stable, replay-safe keys.
+ */
 public class AnnualPeakTemperatureRankingDashboardStore implements AutoCloseable {
     private final PreparedStatement deleteTemperatureRankings;
     private final PreparedStatement insertTemperatureRanking;

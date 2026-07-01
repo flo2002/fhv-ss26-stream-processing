@@ -12,11 +12,16 @@ import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Materialized;
 
+/**
+ * Kafka implementation: collapses frost readings to distinct station-days,
+ * then re-groups the resulting KTable rows into monthly counts.
+ */
 public final class MonthlyFrostDaysTopology {
     private MonthlyFrostDaysTopology() {
     }
 
     public static KTable<String, Long> build(KStream<String, NoaaObservation> observations, int frostCountYear) {
+        // First collapse any number of sub-zero observations into one station-day entry.
         KTable<String, Long> frostObservationsPerStationDay = observations
             .filter((key, observation) -> isUsableObservation(observation))
             .filter((key, observation) -> observation.observationDate().getYear() == frostCountYear)
@@ -25,6 +30,7 @@ public final class MonthlyFrostDaysTopology {
             .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)))
             .count(Materialized.with(Serdes.String(), Serdes.Long()));
 
+        // Re-group daily entries by month; each existing frost day contributes exactly one.
         KGroupedTable<String, Long> groupedByStationMonth = frostObservationsPerStationDay
             .groupBy(
                 (stationDayKey, frostObservations) -> KeyValue.pair(
@@ -34,6 +40,9 @@ public final class MonthlyFrostDaysTopology {
                 Grouped.with(Serdes.String(), Serdes.Long())
             );
 
+        // A second frost reading changes the daily KTable row from 1 to 2, but
+        // both values contribute only one frost day to the month. Kafka therefore
+        // removes the old contribution and adds its replacement: total - 1 + 1.
         return groupedByStationMonth.aggregate(
             () -> 0L,
             (stationMonth, newValue, aggregate) -> aggregate + newValue,
@@ -43,6 +52,8 @@ public final class MonthlyFrostDaysTopology {
     }
 
     public static String stationMonthKey(String stationDayKey) {
+        // Convert the first aggregation's station|day key into station|month
+        // so Kafka Streams can repartition daily rows for the monthly total.
         String[] parts = stationDayKey.split("\\|", 2);
         if (parts.length != 2) {
             throw new IllegalArgumentException("Expected stationDayKey format stationId|yyyy-MM-dd, got " + stationDayKey);

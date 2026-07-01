@@ -14,6 +14,9 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * Loads station-to-region mappings used by the tourism quality pattern.
+ */
 public final class StationRegionMetadataLoader {
     private StationRegionMetadataLoader() {
     }

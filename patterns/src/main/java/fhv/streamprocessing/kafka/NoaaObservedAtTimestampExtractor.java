@@ -4,6 +4,9 @@ import fhv.streamprocessing.model.NoaaObservation;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.streams.processor.TimestampExtractor;
 
+/**
+ * Extracts NOAA observation timestamps so Kafka windows use event time instead of replay time.
+ */
 public class NoaaObservedAtTimestampExtractor implements TimestampExtractor {
     @Override
     public long extract(ConsumerRecord<Object, Object> record, long partitionTime) {

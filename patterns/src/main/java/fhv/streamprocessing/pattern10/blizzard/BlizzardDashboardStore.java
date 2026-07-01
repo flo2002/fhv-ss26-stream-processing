@@ -6,6 +6,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 
+/**
+ * Writes blizzard results to dashboard tables using stable, replay-safe keys.
+ */
 public class BlizzardDashboardStore implements AutoCloseable {
     private final PreparedStatement deleteBlizzardEvents;
     private final PreparedStatement upsertBlizzardEvent;

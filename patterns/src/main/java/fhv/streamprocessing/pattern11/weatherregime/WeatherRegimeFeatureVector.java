@@ -1,5 +1,8 @@
 package fhv.streamprocessing.pattern11.weatherregime;
 
+/**
+ * Feature vector and normalization rules used by the online weather-regime model.
+ */
 public record WeatherRegimeFeatureVector(
     double avgTemperatureCelsius,
     double temperatureRangeCelsius,

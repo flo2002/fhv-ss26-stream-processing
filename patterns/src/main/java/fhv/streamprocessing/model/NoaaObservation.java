@@ -3,6 +3,9 @@ package fhv.streamprocessing.model;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
+/**
+ * Normalized weather observation shared by all stream-processing patterns.
+ */
 public record NoaaObservation(
     String stationId,
     LocalDate observationDate,

@@ -5,6 +5,9 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 
+/**
+ * Writes wet period results to dashboard tables using stable, replay-safe keys.
+ */
 public class WetPeriodDashboardStore implements AutoCloseable {
     private final Connection connection;
     private final PreparedStatement upsertWetPeriod;

@@ -9,6 +9,10 @@ import org.apache.kafka.streams.kstream.Grouped;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.Materialized;
 
+/**
+ * Kafka implementation: aggregates station-day feature vectors and feeds each
+ * completed vector into the incremental CluStream model.
+ */
 public final class WeatherRegimeTopology {
     private WeatherRegimeTopology() {
     }
@@ -19,18 +23,23 @@ public final class WeatherRegimeTopology {
         int clusterCount,
         int horizon
     ) {
+        // One online learner is updated incrementally as completed station-day features arrive.
         OnlineWeatherRegimeClusterer clusterer = new OnlineWeatherRegimeClusterer(clusterCount, horizon);
         return observations
+            // Accept partial observations when at least one feature is usable.
             .filter((key, observation) -> isUsableObservation(observation, weatherRegimeYear))
             .map((key, observation) -> KeyValue.pair(StationDayKey.fromObservation(observation).asKey(), observation))
             .groupByKey(Grouped.with(Serdes.String(), new JsonSerde<>(NoaaObservation.class)))
+            // Collapse raw observations into one multi-feature vector per station and day.
             .aggregate(
                 StationDayWeatherAggregate::new,
                 (stationDay, observation, aggregate) -> aggregate.add(observation),
                 Materialized.with(Serdes.String(), new JsonSerde<>(StationDayWeatherAggregate.class))
             )
             .toStream()
+            // Do not train CluStream on an empty/insufficient daily feature vector.
             .filter((stationDay, aggregate) -> aggregate.hasEnoughSignal())
+            // Assign the current vector, then train CluStream for the following records.
             .mapValues((stationDay, aggregate) -> {
                 StationDayKey key = StationDayKey.parse(stationDay);
                 WeatherRegimeAssignment assignment = clusterer.assignAndLearn(aggregate.toFeatureVector());

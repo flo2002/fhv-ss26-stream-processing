@@ -5,6 +5,9 @@ import java.util.Arrays;
 import moa.cluster.Clustering;
 import moa.clusterers.clustream.Clustream;
 
+/**
+ * Wraps MOA CluStream to assign and incrementally learn normalized weather regimes.
+ */
 public class OnlineWeatherRegimeClusterer {
     private static final String[] LABELS = {
         "cold_windy_wet",
@@ -46,7 +49,11 @@ public class OnlineWeatherRegimeClusterer {
     }
 
     public synchronized WeatherRegimeAssignment assignAndLearn(WeatherRegimeFeatureVector featureVector) {
+        // Normalize first so temperature, wind and clarity contribute on
+        // comparable scales to Euclidean distance.
         double[] point = featureVector.normalized();
+        // CluStream learns incrementally: this single call updates its
+        // micro-clusters without retraining over historical observations.
         clusterer.trainOnInstance(new DenseInstance(1.0, point));
         Clustering microClusters = clusterer.getMicroClusteringResult();
         if (microClusters == null || microClusters.size() == 0) {

@@ -15,6 +15,10 @@ import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.state.StoreBuilder;
 
+/**
+ * Kafka implementation: partitions by station and uses a persistent,
+ * changelog-backed key-value store to run one wet/dry state machine per key.
+ */
 public final class WetDryPeriodTopology {
     private static final String STATE_STORE_NAME = "wet-dry-period-state";
 
@@ -22,6 +26,7 @@ public final class WetDryPeriodTopology {
     }
 
     public static StoreBuilder<KeyValueStore<String, WetPeriodState>> stateStore() {
+        // Persistent stores are backed by Kafka changelogs and survive processor restarts.
         return Stores.keyValueStoreBuilder(
             Stores.persistentKeyValueStore(STATE_STORE_NAME),
             Serdes.String(),
@@ -33,6 +38,7 @@ public final class WetDryPeriodTopology {
         return observations
             .filter((key, observation) -> isUsableObservation(observation, year))
             .selectKey((key, observation) -> observation.stationId())
+            // A Transformer can read/write per-station state and emit only when a period closes.
             .transform(() -> new WetDryPeriodTransformer(), Named.as("wet-dry-period-detector"), STATE_STORE_NAME)
             .filter((key, event) -> event != null);
     }
@@ -61,6 +67,7 @@ public final class WetDryPeriodTopology {
             Instant observedAt = observation.observedAt().toInstant();
             WetPeriodState state = stateStore.get(stationId);
 
+            // Wet readings open or extend the station's current period without emitting.
             if (isWet(observation)) {
                 if (state == null) {
                     stateStore.put(stationId, new WetPeriodState(stationId, observedAt, 1));
@@ -74,6 +81,7 @@ public final class WetDryPeriodTopology {
                 return null;
             }
 
+            // The first dry reading closes the period; delete state before emitting the event.
             stateStore.delete(stationId);
             WetPeriodEvent event = new WetPeriodEvent(
                 stationId,

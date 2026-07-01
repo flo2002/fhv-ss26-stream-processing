@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern11.weatherregime;
 
 import java.time.LocalDate;
 
+/**
+ * Immutable output event produced by the weather regime pattern.
+ */
 public record WeatherRegimeEvent(
     String stationId,
     LocalDate date,

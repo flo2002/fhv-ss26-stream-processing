@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern7.forecasting;
 
 import java.time.Instant;
 
+/**
+ * Composite business key for station forecast state and output records.
+ */
 public record StationForecastKey(
     String stationId,
     Instant windowStart,

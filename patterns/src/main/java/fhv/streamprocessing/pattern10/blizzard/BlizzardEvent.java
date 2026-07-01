@@ -1,5 +1,8 @@
 package fhv.streamprocessing.pattern10.blizzard;
 
+/**
+ * Immutable output event produced by the blizzard pattern.
+ */
 public record BlizzardEvent(
     String stationId,
     long windowStartEpochMs,

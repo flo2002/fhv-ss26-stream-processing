@@ -14,6 +14,9 @@ import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Optional;
 
+/**
+ * Loads NOAA station metadata used to enrich dashboard rows with human-readable station details.
+ */
 public final class StationMetadataLoader {
     public static final String DEFAULT_STATION_HISTORY_URL = "https://www.ncei.noaa.gov/pub/data/noaa/isd-history.txt";
 

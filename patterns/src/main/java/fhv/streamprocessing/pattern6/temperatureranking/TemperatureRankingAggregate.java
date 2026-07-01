@@ -6,6 +6,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Mutable Kafka Streams state used to incrementally calculate temperature ranking.
+ */
 public class TemperatureRankingAggregate {
     private long windowStartEpochMs;
     private long windowEndEpochMs;
@@ -26,6 +29,8 @@ public class TemperatureRankingAggregate {
         windowEndEpochMs = stats.getWindowEndEpochMs();
         rankingType = "HOTTEST_AND_COLDEST_BY_PEAK_TEMPERATURE";
 
+        // Replace this station's previous summary: KTable updates may deliver
+        // newer statistics for the same station many times during the replay.
         stationsById.put(
             stats.getStationId(),
             new RankedStation(
@@ -37,6 +42,7 @@ public class TemperatureRankingAggregate {
             )
         );
 
+        // Re-sort after each update and retain only the ten extreme stations.
         hottest = rankedStations(Comparator
             .comparing(RankedStation::maxTemperatureCelsius, Comparator.reverseOrder())
             .thenComparing(RankedStation::stationId));

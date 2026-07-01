@@ -7,6 +7,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 
+/**
+ * Writes monthly frost days results to dashboard tables using stable, replay-safe keys.
+ */
 public class MonthlyFrostDaysDashboardStore implements AutoCloseable {
     private final PreparedStatement upsertMonthlyFrostDays;
 

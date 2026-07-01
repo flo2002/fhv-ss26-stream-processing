@@ -2,6 +2,9 @@ package fhv.streamprocessing.pattern10.blizzard;
 
 import fhv.streamprocessing.model.NoaaObservation;
 
+/**
+ * Collects freezing, wind, and precipitation evidence for one blizzard detection window.
+ */
 public class BlizzardWindowAggregate {
     private long sampleCount;
     private long freezingObservationCount;
@@ -18,11 +21,14 @@ public class BlizzardWindowAggregate {
         double freezingThresholdCelsius,
         double strongWindThresholdMetersPerSecond
     ) {
+        // One aggregate represents all evidence seen for one station/window.
         sampleCount++;
 
         if (observation.temperatureCelsius() != null && observation.temperatureQualityCode() != null && !observation.temperatureQualityCode().equals("9")) {
             minTemperatureCelsius = Math.min(minTemperatureCelsius, observation.temperatureCelsius());
             if (observation.temperatureCelsius() <= freezingThresholdCelsius) {
+                // Counts, rather than one boolean, make the emitted event
+                // explain how much evidence supported the detection.
                 freezingObservationCount++;
             }
         }

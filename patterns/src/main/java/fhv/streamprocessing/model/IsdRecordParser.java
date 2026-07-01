@@ -6,6 +6,9 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
+/**
+ * Parses NOAA Integrated Surface Database fixed-width records into validated domain observations.
+ */
 public final class IsdRecordParser {
     private static final DateTimeFormatter OBSERVED_AT_FORMAT = DateTimeFormatter.ofPattern("yyyyMMddHHmm");
 

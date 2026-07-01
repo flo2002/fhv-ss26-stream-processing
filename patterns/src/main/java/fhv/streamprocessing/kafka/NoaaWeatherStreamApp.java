@@ -55,6 +55,9 @@ import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.Produced;
 
+/**
+ * Builds and runs the selected Kafka Streams topology, output topic, and dashboard integration.
+ */
 public final class NoaaWeatherStreamApp {
     private static final int MAX_GENERATED_APPLICATION_ID_LENGTH = 72;
 

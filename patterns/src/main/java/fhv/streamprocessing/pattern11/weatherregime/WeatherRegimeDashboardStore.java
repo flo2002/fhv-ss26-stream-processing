@@ -7,6 +7,9 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 
+/**
+ * Writes weather regime results to dashboard tables using stable, replay-safe keys.
+ */
 public class WeatherRegimeDashboardStore implements AutoCloseable {
     private final PreparedStatement upsertWeatherRegime;
 

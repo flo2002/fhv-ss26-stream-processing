@@ -3,6 +3,9 @@ package fhv.streamprocessing.pattern8.maritime;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.streams.processor.TimestampExtractor;
 
+/**
+ * Extracts AIS and buoy observation timestamps so the maritime join uses event time.
+ */
 public class MarineObservedAtTimestampExtractor implements TimestampExtractor {
     @Override
     public long extract(ConsumerRecord<Object, Object> record, long partitionTime) {

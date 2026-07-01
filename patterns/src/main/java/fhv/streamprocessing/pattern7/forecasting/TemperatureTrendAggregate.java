@@ -3,6 +3,9 @@ package fhv.streamprocessing.pattern7.forecasting;
 import fhv.streamprocessing.model.NoaaObservation;
 import java.io.Serializable;
 
+/**
+ * Maintains the running least-squares sums used to forecast the station temperature trend.
+ */
 public class TemperatureTrendAggregate implements Serializable {
     private long count;
     private double sumX;
@@ -27,7 +30,8 @@ public class TemperatureTrendAggregate implements Serializable {
             lastTimestamp = Math.max(lastTimestamp, x);
         }
 
-        // Relative x to keep numbers manageable
+        // Use seconds relative to the first event. This avoids very large epoch
+        // values while preserving the timing needed for least-squares regression.
         double relativeX = x - firstTimestamp;
 
         count++;
@@ -40,6 +44,8 @@ public class TemperatureTrendAggregate implements Serializable {
     }
 
     public double getSlope() {
+        // Compute the least-squares slope from running sums; the aggregate does
+        // not need to retain every observation in the 30-day Kafka window.
         if (count < 2) {
             return 0.0;
         }

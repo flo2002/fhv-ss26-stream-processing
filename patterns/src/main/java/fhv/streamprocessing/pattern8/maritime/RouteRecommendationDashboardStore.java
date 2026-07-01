@@ -5,6 +5,9 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 
+/**
+ * Writes route recommendation results to dashboard tables using stable, replay-safe keys.
+ */
 public class RouteRecommendationDashboardStore implements AutoCloseable {
     private final Connection connection;
     private final PreparedStatement upsert;
