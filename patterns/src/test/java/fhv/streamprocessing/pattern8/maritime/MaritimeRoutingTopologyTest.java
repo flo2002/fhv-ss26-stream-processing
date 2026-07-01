@@ -51,12 +51,50 @@ class MaritimeRoutingTopologyTest {
             assertEquals("366999001", event.mmsi());
             assertEquals("CARIBBEAN TRADER", event.vesselName());
             assertEquals("CARIB_PR_WEST", event.seaAreaId());
-            assertEquals("HIGH", event.riskClass());
-            assertEquals(100.0, event.riskScore());
-            assertEquals(90, event.etaDelayMinutes());
-            assertEquals(Instant.parse("2025-06-01T17:30:00Z"), event.updatedEta());
+            assertEquals("MODERATE", event.riskClass());
+            assertEquals(65.6, event.riskScore(), 0.001);
+            assertEquals(30, event.etaDelayMinutes());
+            assertEquals(Instant.parse("2025-06-01T16:30:00Z"), event.updatedEta());
             assertEquals(18.42, event.latitude());
             assertEquals(-67.15, event.longitude());
+            assertTrue(outputTopic.isEmpty());
+        }
+    }
+
+    @Test
+    void classifiesSevereBuoyConditionsAsHighRisk() {
+        StreamsBuilder builder = new StreamsBuilder();
+        MaritimeRoutingTopology.build(
+            builder.stream("ais", Consumed.with(Serdes.String(), new JsonSerde<>(AisPositionEvent.class))),
+            builder.stream("buoys", Consumed.with(Serdes.String(), new JsonSerde<>(BuoyObservationEvent.class))),
+            2025,
+            30
+        ).to("recommendations", Produced.with(Serdes.String(), new JsonSerde<>(RouteRecommendationEvent.class)));
+
+        try (TopologyTestDriver driver = new TopologyTestDriver(builder.build(), properties())) {
+            TestInputTopic<String, BuoyObservationEvent> buoyTopic = driver.createInputTopic(
+                "buoys",
+                Serdes.String().serializer(),
+                new JsonSerde<>(BuoyObservationEvent.class).serializer()
+            );
+            TestInputTopic<String, AisPositionEvent> aisTopic = driver.createInputTopic(
+                "ais",
+                Serdes.String().serializer(),
+                new JsonSerde<>(AisPositionEvent.class).serializer()
+            );
+            TestOutputTopic<String, RouteRecommendationEvent> outputTopic = driver.createOutputTopic(
+                "recommendations",
+                Serdes.String().deserializer(),
+                new JsonSerde<>(RouteRecommendationEvent.class).deserializer()
+            );
+
+            buoyTopic.pipeInput("41043", buoy("CARIB_PR_NORTH", Instant.parse("2025-08-17T00:10:00Z"), 7.33, 16.9));
+            aisTopic.pipeInput("367164240", ais("367164240", "ELEANOR F MORAN", "CARIB_PR_NORTH", Instant.parse("2025-08-17T00:00:00Z")));
+
+            RouteRecommendationEvent event = outputTopic.readValue();
+            assertEquals("HIGH", event.riskClass());
+            assertEquals(100.0, event.riskScore(), 0.001);
+            assertEquals(90, event.etaDelayMinutes());
             assertTrue(outputTopic.isEmpty());
         }
     }

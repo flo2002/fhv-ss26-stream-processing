@@ -228,6 +228,7 @@ thoughts:
 $env:STREAM_PATTERN='tourism-weather-quality'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
+![Pattern 4: Tourism weather quality index](./assets/Screenshot%202026-05-31%20172712.png)
 
 ## Pattern 5: compute average rain duration for 2025 (Florian)
 thoughts:
@@ -276,14 +277,17 @@ docker compose up --build -d --force-recreate noaa-stream-client
 thoughts:
 - Implemented as a stream-stream join between an AIS ship-position stream and a buoy sensor stream.
 - The NOAA ISD weather ingest is not enough for this pattern because it describes land/weather stations, not moving vessels and marine buoy measurements. Therefore Pattern 8 adds a separate Python producer for marine demo data and separate Kafka topics: `marine.ais.positions`, `marine.buoy.observations`, and `marine.route.recommendations`.
-- The first implementation covers the Caribbean around Puerto Rico, the US Virgin Islands area, and the eastern Caribbean because AIS and buoy public data is easier to justify for US/Caribbean waters than for the Mediterranean in the 2025 historical context.
-- AIS positions are read from the real NOAA MarineCadastre 2025 daily CSV/Zstandard archive. NDBC buoy observations are read from real historical standard meteorological files, for example stations `41115`, `41043`, and `42060`.
-- The producer derives `seaAreaId` for AIS records from latitude/longitude bounding boxes and assigns NDBC stations to configured sea areas, for example `CARIB_PR_WEST`, `CARIB_PR_NORTH`, and `CARIB_EAST`. Kafka Streams re-keys both streams by this sea area and joins records that are within the configurable time window, default 30 minutes.
+- The implementation covers a wider Caribbean/Bahamas demo area instead of only the waters north of Puerto Rico. The region boxes include Puerto Rico north/south/west, USVI, eastern Caribbean, central/western Caribbean, and Bahamas areas so the Grafana map does not collapse into one small cluster.
+- AIS positions are read from the real NOAA MarineCadastre 2025 daily CSV/Zstandard archive. NDBC buoy observations are read from real historical standard meteorological files, for example stations `41043`, `41052`, `41056`, `42085`, `42060`, `41046`, `41047`, `42058`, `42056`, and `42057`.
+- The producer derives `seaAreaId` for AIS records from latitude/longitude bounding boxes and assigns NDBC stations to configured sea areas, for example `CARIB_PR_NORTH`, `CARIB_USVI`, `CARIB_PR_SOUTH`, `CARIB_EAST`, `BAHAMAS_EAST`, and `CARIB_WEST`. Kafka Streams re-keys both streams by this sea area and joins records that are within the configurable time window, default 30 minutes.
 - The stream uses event time from `observedAt`, not processing time. This is important because the demo replays 2025 historical events.
-- Risk decision: wave height and wind speed are combined into a simple 0-100 marine route risk score: `risk = min(100, wave_height_m * 22 + wind_speed_mps * 2.5)`. Risk classes are `LOW`, `MODERATE`, and `HIGH`.
+- Risk decision: wave height and wind speed are combined into a simple 0-100 marine route risk score: `risk = min(100, wave_height_m * 8 + wind_speed_mps * 2.5)`. The earlier formula made wave height too dominant and classified too many real buoy records as high risk. This calibrated version keeps severe sea states visible while making ordinary rough conditions moderate or low.
 - The recommendation includes vessel position, wave height, wind speed, risk class, a route instruction, and an ETA adjustment. High risk adds 90 minutes, moderate risk adds 30 minutes, and low risk keeps the ETA unchanged.
 - The dashboard uses the same counter table as Pattern 1. Pattern 8 increments `marine_ais_records`, `marine_buoy_records`, and `marine_route_recommendations`; the Grafana counter shows processed route recommendation records.
-- The AIS archive is large, so the producer has a configurable date range and `MAX_AIS_RECORDS_PER_DAY` limit for local runs. This is still real source data; it just avoids downloading the complete 2025 archive during development.
+- Data-volume decision: the AIS archive is large, so the demo chooses one representative day (`2025-08-17`) instead of limiting records per day by default. `MAX_AIS_RECORDS_PER_DAY` still exists as an optional development safety valve, but the default is `0`, meaning no cap.
+- Operational decision: the NOAA AIS archive is downloaded over HTTPS and can pause while streaming a large compressed CSV, so the producer uses a longer `SOURCE_TIMEOUT_SECONDS` default for Pattern 8 and logs individual emitted records only at debug level.
+- Demo-day decision: `2025-08-17` was chosen because real NDBC station `41043` contains severe buoy conditions on that day and the AIS archive contains enough vessel positions across the configured sea areas to produce meaningful route recommendations.
+- Source-data challenge: NOAA MarineCadastre AIS coverage for the selected Caribbean day is still naturally concentrated around Puerto Rico. Removing the AIS cap improves the map because it includes west Puerto Rico, USVI, and a small number of eastern/central Caribbean matches. We also added real CarICoos/NDBC stations `41052`, `41056`, and `42085` so those AIS-heavy areas have matching buoy windows. The source data is still not geographically uniform, and we keep this limitation visible instead of fabricating ship positions.
 - This is the easy version. A more advanced version could derive `seaAreaId` from polygons or grid cells and use finer route recommendation logic.
 - Dashboard: `Pattern 8 - Caribbean Maritime Routing`
 ```powershell
@@ -292,22 +296,27 @@ docker compose up --build -d kafka postgres grafana noaa-stream-client
 $env:RESET_MARINE_STATE='true'
 docker compose up --build marine-pattern8-producer
 ```
+![9: Caribbean maritime routing](./assets/Screenshot%202026-06-11%20at%2019.03.12.png)
 
 ## Pattern 9: wet period detection (Mykola)
 thoughts:
-- Implemented as a state machine over the NOAA observation stream.
-- A station enters a wet state when the first observation with `rainDurationHours > 0` arrives.
-- The wet state remains open while additional precipitation observations arrive.
-- The first dry observation, where precipitation is absent (`rainDurationHours` is missing or not greater than zero), closes the period and emits one `WetPeriodEvent`.
-- The event contains station id, period start, period end, duration in minutes, and the number of precipitation observations inside the period.
-- Duration decision: the period starts at the first wet reading and ends at the dry reading that closes it. This matches the state-machine wording: the period remains open until absence is observed.
-- Kafka Streams uses a local state store keyed by station id, so every station can have an independent open wet period.
+- This pattern is implemented as a small state machine, because "wet period" is not just an aggregate like average temperature. We have to remember whether a station is currently inside a wet period and close that period later when a dry observation arrives.
+- The state is tracked for each station.
+The following diagram 
+- The app parses the raw ISD payload and uses `rainDurationHours` from the parsed `NoaaObservation`.
+- Wet/dry decision: an observation is wet when `rainDurationHours > 0`. If `rainDurationHours` is missing, zero, or rejected by the parser because the NOAA precipitation group is invalid, we treat the observation as dry.
+
+The following diagram illustrates the business logic:
+
+
+- Duration decision: the period ends at the first dry reading, not at the last wet reading. I chose this because the pattern wording says the state closes when precipitation is absent. It also makes the state machine easy to explain: open on wet, close on dry.
+- Limitation: an open wet period is only emitted after a later dry observation arrives. If the input for a station ends while it is still wet, that unfinished period remains open in state and is not shown as a completed event.
 - Dashboard: `NOAA Wet Period Detection 2025`
 ```powershell
 $env:STREAM_PATTERN='wet-dry-period'
 docker compose up --build -d --force-recreate noaa-stream-client
 ```
-![9: Wet period detection](./assets/Screenshot%202026-06-11%20at%2012.43.43.png)
+![9: Wet period detection](./assets/Screenshot%202026-06-11%20at%2014.03.16.png)
 
 ## Pattern 10: blizzard detection (Chris)
 
