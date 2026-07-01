@@ -1,13 +1,15 @@
 package fhv.streamprocessing.pattern6.temperatureranking;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Mutable Kafka Streams state used to incrementally calculate temperature ranking.
+ * Maintains incrementally sorted Top-10 lists for the hottest and coldest
+ * stations. Only the ranking candidates are stored in Kafka state.
  */
 public class TemperatureRankingAggregate {
     private long windowStartEpochMs;
@@ -29,27 +31,58 @@ public class TemperatureRankingAggregate {
         windowEndEpochMs = stats.getWindowEndEpochMs();
         rankingType = "HOTTEST_AND_COLDEST_BY_PEAK_TEMPERATURE";
 
-        // Replace this station's previous summary: KTable updates may deliver
-        // newer statistics for the same station many times during the replay.
-        stationsById.put(
+        RankedStation updatedStation = new RankedStation(
             stats.getStationId(),
-            new RankedStation(
-                stats.getStationId(),
-                stats.getCount(),
-                stats.getAverageTemperatureCelsius(),
-                stats.getMinTemperatureCelsius(),
-                stats.getMaxTemperatureCelsius()
-            )
+            stats.getCount(),
+            stats.getAverageTemperatureCelsius(),
+            stats.getMinTemperatureCelsius(),
+            stats.getMaxTemperatureCelsius()
         );
 
-        // Re-sort after each update and retain only the ten extreme stations.
-        hottest = rankedStations(Comparator
-            .comparing(RankedStation::maxTemperatureCelsius, Comparator.reverseOrder())
-            .thenComparing(RankedStation::stationId));
-        coldest = rankedStations(Comparator
-            .comparing(RankedStation::minTemperatureCelsius)
-            .thenComparing(RankedStation::stationId));
+        // The station may already be in a Top-10 list. Remove its stale value,
+        // insert the replacement at the sorted position, and trim to ten.
+        // This is exact because a station maximum only rises and a minimum only
+        // falls; an evicted station can re-enter only after another update.
+        updateTopTen(hottest, updatedStation, hottestComparator());
+        updateTopTen(coldest, updatedStation, coldestComparator());
+        rebuildCandidateIndex();
         return this;
+    }
+
+    private void updateTopTen(
+        List<RankedStation> ranking,
+        RankedStation updatedStation,
+        Comparator<RankedStation> comparator
+    ) {
+        ranking.removeIf(station -> station.stationId().equals(updatedStation.stationId()));
+
+        int insertionPoint = Collections.binarySearch(ranking, updatedStation, comparator);
+        if (insertionPoint < 0) {
+            insertionPoint = -insertionPoint - 1;
+        }
+        ranking.add(insertionPoint, updatedStation);
+
+        if (ranking.size() > 10) {
+            ranking.remove(10);
+        }
+    }
+
+    private void rebuildCandidateIndex() {
+        stationsById = new LinkedHashMap<>();
+        hottest.forEach(station -> stationsById.put(station.stationId(), station));
+        coldest.forEach(station -> stationsById.put(station.stationId(), station));
+    }
+
+    private static Comparator<RankedStation> hottestComparator() {
+        return Comparator
+            .comparing(RankedStation::maxTemperatureCelsius, Comparator.reverseOrder())
+            .thenComparing(RankedStation::stationId);
+    }
+
+    private static Comparator<RankedStation> coldestComparator() {
+        return Comparator
+            .comparing(RankedStation::minTemperatureCelsius)
+            .thenComparing(RankedStation::stationId);
     }
 
     public long getWindowStartEpochMs() {
@@ -106,12 +139,6 @@ public class TemperatureRankingAggregate {
 
     public List<RankedStation> coldestStations(int limit) {
         return coldest.size() <= limit ? coldest : coldest.subList(0, limit);
-    }
-
-    private List<RankedStation> rankedStations(Comparator<RankedStation> comparator) {
-        List<RankedStation> stations = new ArrayList<>(stationsById.values());
-        stations.sort(comparator);
-        return stations.size() <= 10 ? stations : new ArrayList<>(stations.subList(0, 10));
     }
 
     public record RankedStation(
