@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOAA Weather Stream Processing with Kafka</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #eef2f7; --card: #ffffff; --ink: #1a202c; --muted: #5a6b82;
+    --brand: #1e3a5f; --accent: #2b6cb0; --accent2: #2f855a;
+    --source-bg:#e8f7f0; --source-br:#2f855a;
+    --topic-bg:#fff7db;  --topic-br:#b7791f;
+    --stream-bg:#e9f2ff; --stream-br:#2b6cb0;
+    --store-bg:#f3e8ff;  --store-br:#6b46c1;
+    --viz-bg:#ffe8ef;    --viz-br:#b83280;
+    --code-bg:#0f172a;   --code-ink:#e2e8f0;
+  }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--ink); overflow: hidden; -webkit-font-smoothing: antialiased;
+  }
+  .deck { height: 100vh; width: 100vw; position: relative; }
+
+  .slide {
+    position: absolute; inset: 0; display: none; flex-direction: column;
+    padding: 4.5vh 5.5vw 8vh; animation: fade .35s ease;
+  }
+  .slide.active { display: flex; }
+  @keyframes fade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  h1 { color: var(--brand); line-height: 1.08; }
+  .slide h2 {
+    color: var(--brand); font-size: clamp(24px, 3.1vw, 40px); line-height: 1.12;
+    margin-bottom: .55em; padding-bottom: .28em; border-bottom: 3px solid var(--accent);
+    display: inline-block;
+  }
+  .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: clamp(11px,1.05vw,14px);
+    color: var(--accent); font-weight: 700; margin-bottom: .5em; }
+  p, li { font-size: clamp(15px, 1.55vw, 21px); line-height: 1.5; color: var(--ink); }
+  .muted { color: var(--muted); }
+  ul { margin-left: 1.15em; }
+  li { margin: .4em 0; }
+  li strong { color: var(--brand); }
+  b, strong { font-weight: 700; }
+  code { font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; background: #e6ebf2;
+    color: #1c2f4a; padding: .08em .38em; border-radius: 5px; font-size: .86em; }
+
+  .content { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: .6em; min-height: 0; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 3vw; align-items: center; }
+  .cols.wide-left { grid-template-columns: 1.15fr .85fr; }
+
+  /* Title slide */
+  .title-slide { justify-content: center; align-items: flex-start;
+    background: linear-gradient(135deg, #1e3a5f 0%, #2b6cb0 60%, #2f855a 130%); }
+  .title-slide * { color: #fff; }
+  .title-slide h1 { font-size: clamp(34px, 6vw, 78px); font-weight: 800; letter-spacing: -.01em; }
+  .title-slide .sub { font-size: clamp(17px, 2.4vw, 30px); margin-top: .5em; opacity: .96; font-weight: 500; }
+  .title-slide .meta { margin-top: 2.2em; font-size: clamp(14px,1.6vw,20px); opacity: .92; line-height: 1.8; }
+  .title-slide .pill { display:inline-block; border:1px solid rgba(255,255,255,.55); border-radius:999px;
+    padding:.28em .95em; margin:.2em .4em .2em 0; font-size: clamp(12px,1.35vw,17px); }
+  .title-slide .hint { margin-top: 2.4em; font-size: 13px; opacity: .72; }
+
+  /* Cards / boxes */
+  .card-box { background: var(--card); border: 1px solid #dbe3ee; border-radius: 14px;
+    padding: 1.1em 1.3em; box-shadow: 0 6px 20px rgba(30,58,95,.06); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1em; }
+  .grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 1em; }
+  .callout { border-left: 5px solid var(--accent); background: #eaf1fb; border-radius: 0 10px 10px 0;
+    padding: .8em 1.1em; }
+  .callout.green { border-color: var(--source-br); background: var(--source-bg); }
+  .callout.amber { border-color: var(--topic-br); background: var(--topic-bg); }
+  .callout.purple{ border-color: var(--store-br); background: var(--store-bg); }
+  .callout h4 { color: var(--brand); font-size: clamp(15px,1.6vw,20px); margin-bottom:.25em; }
+
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: .3em 1em; font-size: clamp(13px,1.4vw,18px); }
+  .kv dt { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  .kv dd { color: var(--ink); }
+
+  /* Pipeline diagram */
+  .legend { display: flex; flex-wrap: wrap; gap: .6em; margin: .2em 0 1em; }
+  .chip { font-size: clamp(11px,1.15vw,15px); padding: .28em .7em; border-radius: 999px; border: 1.5px solid; font-weight: 600; }
+  .chip.source { background: var(--source-bg); border-color: var(--source-br); color: #22543d; }
+  .chip.topic  { background: var(--topic-bg);  border-color: var(--topic-br);  color: #744210; }
+  .chip.stream { background: var(--stream-bg); border-color: var(--stream-br); color: #1a365d; }
+  .chip.store  { background: var(--store-bg);  border-color: var(--store-br);  color: #44337a; }
+  .chip.viz    { background: var(--viz-bg);    border-color: var(--viz-br);    color: #702459; }
+
+  .flow { display: flex; align-items: center; flex-wrap: wrap; gap: .5em; justify-content: center; }
+  .node { border-radius: 10px; border: 2px solid; padding: .55em .8em; font-weight: 600; text-align: center;
+    font-size: clamp(11px,1.25vw,16px); min-width: 88px; }
+  .node.source { background: var(--source-bg); border-color: var(--source-br); color:#22543d; }
+  .node.topic  { background: var(--topic-bg);  border-color: var(--topic-br); color:#744210; font-family: ui-monospace, Menlo, monospace; }
+  .node.stream { background: var(--stream-bg); border-color: var(--stream-br); color:#1a365d; }
+  .node.store  { background: var(--store-bg);  border-color: var(--store-br); color:#44337a; }
+  .node.viz    { background: var(--viz-bg);    border-color: var(--viz-br); color:#702459; }
+  .arrow { color: var(--muted); font-size: clamp(16px,2vw,26px); font-weight: 700; }
+  .stack { display: flex; flex-direction: column; gap: .35em; }
+
+  /* Pattern slides */
+  .pat-head { display: flex; align-items: baseline; gap: .6em; flex-wrap: wrap; }
+  .pat-num { background: var(--accent); color: #fff; font-weight: 800; border-radius: 8px;
+    padding: .05em .5em; font-size: clamp(15px,1.8vw,24px); }
+  .owner { margin-left: auto; font-size: clamp(11px,1.2vw,15px); font-weight: 700; color: #fff;
+    background: var(--accent2); border-radius: 999px; padding: .25em .8em; }
+  .shot { width: 100%; max-height: 62vh; object-fit: contain; border-radius: 10px;
+    border: 1px solid #cdd7e5; box-shadow: 0 8px 24px rgba(30,58,95,.14); background:#fff; }
+  .shot-wrap { display:flex; flex-direction:column; align-items:center; gap:.4em; }
+  .shot-cap { font-size: clamp(11px,1.15vw,14px); color: var(--muted); }
+  .concept { display:flex; align-items:center; justify-content:center; height:100%;
+    background: var(--stream-bg); border:2px dashed var(--stream-br); border-radius:14px; padding:1.2em;
+    text-align:center; color:#1a365d; font-weight:600; font-size: clamp(14px,1.7vw,22px); }
+
+  /* Code block */
+  pre { background: var(--code-bg); color: var(--code-ink); border-radius: 10px; padding: 1em 1.2em;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; font-size: clamp(11px,1.2vw,15px);
+    line-height: 1.55; overflow: auto; }
+  pre .k { color: #7dd3fc; } pre .s { color: #86efac; } pre .c { color: #64748b; }
+
+  /* Chrome: footer, progress, nav, notes */
+  .footer { position: absolute; bottom: 0; left: 0; right: 0; height: 4.4vh; min-height: 30px;
+    display: flex; align-items: center; justify-content: space-between; padding: 0 2vw;
+    font-size: clamp(10px,1.05vw,13px); color: var(--muted); background: rgba(255,255,255,.6); }
+  .footer .brand-mini { font-weight: 700; color: var(--brand); }
+  .progress { position: absolute; top: 0; left: 0; height: 4px; background: linear-gradient(90deg,var(--accent),var(--accent2));
+    width: 0; transition: width .3s ease; z-index: 5; }
+  .nav { position: absolute; bottom: 1vh; right: 1.4vw; display: flex; gap: .4em; z-index: 6; }
+  .nav button { border: 1px solid #c4d0e0; background: #fff; color: var(--brand); border-radius: 8px;
+    width: 34px; height: 30px; font-size: 16px; cursor: pointer; }
+  .nav button:hover { background: var(--accent); color: #fff; }
+
+  aside.notes { display: none; }
+  body.show-notes aside.notes {
+    display: block; position: absolute; left: 0; right: 0; bottom: 4.4vh; max-height: 34vh; overflow: auto;
+    background: #0f172a; color: #e2e8f0; padding: 1em 5.5vw; font-size: 14px; line-height: 1.5; z-index: 7;
+    border-top: 3px solid var(--accent); }
+  aside.notes b { color: #7dd3fc; }
+
+  @media print {
+    body { overflow: visible; }
+    .deck { height: auto; }
+    .slide { display: flex !important; position: relative; inset: auto;
+      height: 100vh; page-break-after: always; break-after: page; animation: none; }
+    .nav, .progress, .footer .kbd, aside.notes { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="deck" id="deck">
+
+  <!-- 1. TITLE -->
+  <section class="slide active title-slide">
+    <div class="eyebrow">FHV · Stream Processing Systems · SS 2026</div>
+    <h1>NOAA Weather<br>Stream Processing with Kafka</h1>
+    <div class="sub">Real-time analytics over historical NOAA weather &amp; marine data — 11 streaming patterns end to end</div>
+    <div class="meta">
+      <div><b>Team:</b>
+        <span class="pill">Florian</span>
+        <span class="pill">Chris</span>
+        <span class="pill">Mykola</span>
+        <span class="pill">Haroldas</span>
+      </div>
+      <div style="margin-top:.6em"><b>Stack:</b> Apache Kafka · Kafka Streams (Java 17) · Python · Docker Compose · Postgres · Grafana · MOA</div>
+    </div>
+    <div class="hint">Use ← / → to navigate · <b>S</b> = speaker notes · <b>F</b> = fullscreen · Print → Save as PDF to export</div>
+    <aside class="notes"><b>Notes:</b> Welcome. This is our stream-processing project: we ingest a full year of NOAA weather observations from an FTP archive, push them through Kafka, and run 11 independent stream-processing patterns in Kafka Streams, visualized in Grafana. Team of four, round-robin task distribution.</aside>
+  </section>
+
+  <!-- 2. AGENDA -->
+  <section class="slide">
+    <h2>Agenda</h2>
+    <div class="content">
+      <div class="grid2">
+        <div class="card-box">
+          <ul>
+            <li><strong>Problem &amp; dataset</strong> — what we process and why</li>
+            <li><strong>Architecture</strong> — the end-to-end pipeline</li>
+            <li><strong>Technology choices</strong> — with arguments</li>
+            <li><strong>Docker &amp; the FTP data source</strong></li>
+            <li><strong>Ingestion &amp; streaming</strong> — producer, parsing, event time</li>
+          </ul>
+        </div>
+        <div class="card-box">
+          <ul>
+            <li><strong>The 11 patterns</strong> — how each one works</li>
+            <li><strong>Challenges</strong> we hit</li>
+            <li><strong>Fault tolerance &amp; recovery</strong>
+              <ul>
+                <li>What if a service stops?</li>
+                <li>Is data lost / can we resume at the last row?</li>
+                <li>Where does the last state come from?</li>
+              </ul>
+            </li>
+            <li><strong>Lessons learned &amp; Q&amp;A</strong></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> We'll spend most of the depth budget at the end on fault tolerance and state recovery, since that's the core of stream processing.</aside>
+  </section>
+
+  <!-- 3. PROBLEM & USE CASE -->
+  <section class="slide">
+    <h2>Problem &amp; use case</h2>
+    <div class="content">
+      <div class="callout">
+        <p>Treat a full year of weather observations as a <b>continuous stream</b> and derive analytics in real time — daily averages, frost/blizzard/wet-period detection, forecasting, rankings, tourism scoring, marine routing, and ML clustering.</p>
+      </div>
+      <div class="grid2" style="margin-top:.4em">
+        <div class="card-box">
+          <h4 style="color:var(--brand);margin-bottom:.3em">Why historical 2025 data?</h4>
+          <p class="muted">There is no live 2026 feed for our use case, so we <b>replay the historical 2025 archive</b> — using each record's own observation timestamp (<b>event time</b>) so windows behave exactly as if it were live.</p>
+        </div>
+        <div class="card-box">
+          <h4 style="color:var(--brand);margin-bottom:.3em">Why streaming (not batch)?</h4>
+          <p class="muted">The pipeline is decoupled and replayable: producers, the broker, and processors can each fail and restart independently without losing data — the topic is the durable buffer between them.</p>
+        </div>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> Key framing: historical data replayed on event time. This lets us demonstrate real streaming semantics (windowing, out-of-order handling, resume) on a reproducible dataset.</aside>
+  </section>
+
+  <!-- 4. DATASET & SOURCE -->
+  <section class="slide">
+    <h2>Dataset &amp; sources</h2>
+    <div class="content">
+      <div class="grid2">
+        <div class="card-box">
+          <h4 style="color:var(--brand)">NOAA ISD — main weather feed</h4>
+          <dl class="kv" style="margin-top:.5em">
+            <dt>Source</dt><dd>NOAA NCEI Integrated Surface Database</dd>
+            <dt>Access</dt><dd><code>ftp.ncei.noaa.gov</code> · <code>/pub/data/noaa/2025</code></dd>
+            <dt>Volume</dt><dd>~1.5 GB · ~12,815 station-year <code>.gz</code> files</dd>
+            <dt>Format</dt><dd>Fixed-width text (one line = one observation)</dd>
+            <dt>Fields</dt><dd>Temperature, wind, visibility, precipitation, quality codes</dd>
+          </dl>
+        </div>
+        <div class="card-box">
+          <h4 style="color:var(--brand)">Marine feeds — for Pattern 8</h4>
+          <dl class="kv" style="margin-top:.5em">
+            <dt>AIS</dt><dd>NOAA MarineCadastre 2025 daily archives (ship positions)</dd>
+            <dt>Buoys</dt><dd>NDBC standard-meteorological files (e.g. <code>41115</code>, <code>41043</code>, <code>42060</code>)</dd>
+            <dt>Region</dt><dd>Caribbean (Puerto Rico / eastern Caribbean)</dd>
+            <dt>Why separate</dt><dd>ISD describes land stations — not moving vessels or marine buoys</dd>
+          </dl>
+        </div>
+      </div>
+      <div class="callout amber" style="margin-top:.3em"><p>All sources are <b>real public NOAA data</b>. For local runs we cap volume (max files, max AIS records/day) — it's still real source data, just a slice.</p></div>
+    </div>
+    <aside class="notes"><b>Notes:</b> ISD is fixed-width — we parse specific column ranges. Pattern 8 needed its own producer and topics because ISD has no vessel/buoy data.</aside>
+  </section>
+
+  <!-- 5. ARCHITECTURE -->
+  <section class="slide">
+    <h2>Architecture — end to end</h2>
+    <div class="content">
+      <div class="legend">
+        <span class="chip source">Source / producer</span>
+        <span class="chip topic">Kafka topic</span>
+        <span class="chip stream">Kafka Streams</span>
+        <span class="chip store">Store</span>
+        <span class="chip viz">Visualization</span>
+      </div>
+      <div class="flow">
+        <div class="node source">NOAA FTP<br><span style="font-weight:400">2025 ISD files</span></div>
+        <span class="arrow">→</span>
+        <div class="node source">Python<br>producer</div>
+        <span class="arrow">→</span>
+        <div class="node topic">noaa.<br>weather.raw</div>
+        <span class="arrow">→</span>
+        <div class="node stream">Kafka Streams<br><span style="font-weight:400">parse ISD → 11 patterns</span></div>
+        <span class="arrow">→</span>
+        <div class="stack">
+          <div class="node topic">11 output topics</div>
+        </div>
+        <span class="arrow">→</span>
+        <div class="node store">Postgres<br><span style="font-weight:400">dashboard tables</span></div>
+        <span class="arrow">→</span>
+        <div class="node viz">Grafana</div>
+      </div>
+
+      <div class="flow" style="margin-top:1.4em">
+        <div class="node source">Marine<br>producer</div>
+        <span class="arrow">→</span>
+        <div class="stack">
+          <div class="node topic">marine.ais.positions</div>
+          <div class="node topic">marine.buoy.observations</div>
+        </div>
+        <span class="arrow">→</span>
+        <div class="node stream">P8 stream-stream<br>join (by sea area)</div>
+        <span class="arrow">→</span>
+        <div class="node topic">marine.route.<br>recommendations</div>
+        <span class="arrow">→</span>
+        <div class="node store">Postgres</div>
+      </div>
+
+      <div class="callout" style="margin-top:1.4em"><p>Kafka is the <b>durable, replayable buffer</b> between every stage. Each stage is an independent Docker service that can crash and restart without losing data.</p></div>
+    </div>
+    <aside class="notes"><b>Notes:</b> Walk left to right. The raw topic decouples ingestion from processing. Every pattern reads the same parsed stream and writes its own output topic + Postgres rows. Grafana only reads Postgres. Pattern 8 is a second, parallel pipeline with its own producer and a join.</aside>
+  </section>
+
+  <!-- 6. TECH CHOICES 1 -->
+  <section class="slide">
+    <h2>Technology choices — with arguments</h2>
+    <div class="content">
+      <div class="grid2">
+        <div class="callout green">
+          <h4>Docker &amp; Docker Compose</h4>
+          <p class="muted">Team runs <b>2 Macs + 2 Windows</b> machines → containers give everyone an identical, one-command local environment.</p>
+        </div>
+        <div class="callout">
+          <h4>Apache Kafka 3.8.1 (KRaft mode)</h4>
+          <p class="muted">Durable, replayable commit log; no ZooKeeper needed (broker + controller in one). Decouples ingestion from processing.</p>
+        </div>
+        <div class="callout amber">
+          <h4>Java 17 + Kafka Streams &nbsp;<span style="font-weight:400">(not Python)</span></h4>
+          <p class="muted">We tried Python first — but it has <b>no real / maintained Kafka Streams processing API</b> (libraries undeveloped or deprecated). Kafka Streams is the officially supported stream-processing API, and it's on the JVM.</p>
+        </div>
+        <div class="callout purple">
+          <h4>Custom Python FTP producer &nbsp;<span style="font-weight:400">(not Kafka Connect)</span></h4>
+          <p class="muted">Kafka Connect's FTP source connector had <b>licensing concerns</b> and less flexibility. A custom script lets us track processed files and <b>resume without duplicates</b>.</p>
+        </div>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> These four decisions are the ones the instructor will ask "why". The Python→Java switch is the most important one to be able to defend.</aside>
+  </section>
+
+  <!-- 7. TECH CHOICES 2 -->
+  <section class="slide">
+    <h2>Technology choices — supporting stack</h2>
+    <div class="content">
+      <div class="grid3">
+        <div class="card-box"><h4 style="color:var(--brand)">Postgres 16</h4><p class="muted">Stores/caches the aggregated results as dashboard tables; idempotent upserts keyed by station/day.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Grafana 11</h4><p class="muted">One dashboard per pattern, reading straight from Postgres. Fast to build, familiar to reviewers.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">MOA</h4><p class="muted">Massive Online Analysis — provides the <b>CluStream</b> online clustering used in Pattern 11.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Jackson</h4><p class="muted">JSON serialization/deserialization for the Kafka message envelope and event types.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Maven + Shade</h4><p class="muted">Builds one fat JAR so the stream client runs as a single container entrypoint.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">kafka-python-ng</h4><p class="muted">Kafka client for the producers; zstandard for decoding the AIS archives.</p></div>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> Postgres exists mainly so Grafana has something SQL-friendly to query; Kafka Streams could serve state directly, but this was simpler and gave nicer dashboards.</aside>
+  </section>
+
+  <!-- 8. DOCKER / COMPOSE -->
+  <section class="slide">
+    <h2>Docker &amp; Compose setup</h2>
+    <div class="content">
+      <div class="cols wide-left">
+        <div>
+          <p style="margin-bottom:.4em"><b>Services</b> (one command: <code>docker compose up</code>):</p>
+          <ul>
+            <li><code>kafka</code> — broker + controller (KRaft)</li>
+            <li><code>kafka-init</code> — creates topics, sets <b>infinite retention</b> on the raw topic</li>
+            <li><code>noaa-producer</code> — FTP → Kafka</li>
+            <li><code>marine-pattern8-producer</code> — AIS + buoy → Kafka</li>
+            <li><code>noaa-stream-client</code> — the Kafka Streams app</li>
+            <li><code>postgres</code> + <code>grafana</code></li>
+          </ul>
+        </div>
+        <div>
+          <div class="card-box">
+            <p><b>Named volumes</b> (survive restarts):</p>
+            <p class="muted" style="margin:.3em 0 .8em"><code>kafka_data</code>, <code>producer_state</code>, <code>marine_producer_state</code>, <code>postgres_data</code>, <code>grafana_data</code></p>
+            <p><b>Ports</b></p>
+            <p class="muted" style="margin-top:.3em">Kafka <code>19094</code> · Postgres <code>15432</code> · Grafana <code>3000</code> (admin/admin)</p>
+          </div>
+          <div class="callout amber" style="margin-top:.8em"><p><code>STREAM_PATTERN</code> env var runs <b>one pattern at a time</b> — running all 11 at once spiked disk &amp; CPU.</p></div>
+        </div>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> The volumes are the key to fault tolerance — Kafka's log, the producer checkpoint, and Postgres all persist across container restarts. STREAM_PATTERN was a practical fix for laptop resource limits.</aside>
+  </section>
+
+  <!-- 9. INGESTION -->
+  <section class="slide">
+    <h2>Data ingestion — the FTP producer</h2>
+    <div class="content">
+      <div class="cols">
+        <div>
+          <ul>
+            <li>Lists the FTP directory, <b>streams each <code>.gz</code></b> (never stored on disk)</li>
+            <li>Decodes each line → wraps it in a <b>JSON envelope</b> → publishes to <code>noaa.weather.raw</code></li>
+            <li>Message key = <code>&lt;file path&gt;:&lt;record #&gt;</code></li>
+            <li><code>acks=all</code> + retries; flushes progress every ~1000 records</li>
+            <li><b>Checkpoints to a state file</b> in a Docker volume → resume support (next slide set)</li>
+          </ul>
+        </div>
+        <div>
+          <pre><span class="c">// JSON envelope written to Kafka</span>
+{
+  <span class="k">"schema_version"</span>: 1,
+  <span class="k">"source"</span>: { <span class="k">"type"</span>:<span class="s">"noaa_isd_historical_ftp"</span>,
+             <span class="k">"host"</span>:..., <span class="k">"path"</span>:..., <span class="k">"file_name"</span>:... },
+  <span class="k">"observed_at"</span>: <span class="s">"2025-..T..Z"</span>,   <span class="c">// event time</span>
+  <span class="k">"ingested_at"</span>: <span class="s">"..."</span>,
+  <span class="k">"record_number"</span>: 42,
+  <span class="k">"payload_format"</span>: <span class="s">"isd-fixed-width"</span>,
+  <span class="k">"payload_text"</span>: <span class="s">"&lt;raw ISD line&gt;"</span>
+}</pre>
+        </div>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> We keep the raw fixed-width line in payload_text and parse it downstream in Java — so the producer stays dumb and the parsing logic lives with the processing. observed_at is extracted here so downstream can use event time.</aside>
+  </section>
+
+  <!-- 10. STREAMING & PARSING -->
+  <section class="slide">
+    <h2>Data streaming &amp; parsing</h2>
+    <div class="content">
+      <div class="cols">
+        <div>
+          <p><b>Kafka Streams pipeline</b> (per record):</p>
+          <ul>
+            <li>Consume <code>noaa.weather.raw</code>, deserialize JSON (Jackson)</li>
+            <li>Parse fixed-width ISD → <code>NoaaObservation</code>: station (USAF+WBAN), date/time, temperature, wind, visibility→<b>sky-clarity score</b>, rain duration</li>
+            <li>Honor missing-value sentinels (<code>+9999</code>, <code>999999</code>) &amp; quality code <code>9</code></li>
+            <li>Fan out to whichever of the 11 patterns are enabled</li>
+          </ul>
+        </div>
+        <div>
+          <div class="callout green">
+            <h4>Event time, not wall-clock</h4>
+            <p class="muted">A custom <code>TimestampExtractor</code> uses each record's <code>observed_at</code>. Essential when replaying 2025 history — windows are anchored to when the weather <b>actually happened</b>, not when we replayed it.</p>
+          </div>
+          <div class="callout" style="margin-top:.8em">
+            <p class="muted">Offsets reset = <code>earliest</code>, so a fresh consumer group reprocesses the whole year; commit interval = 1s.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> Parsing lives in IsdRecordParser — it reads specific column ranges. The sky-clarity score is derived from visibility (ISD has no sunshine field). Event time is the single most important streaming concept in this project.</aside>
+  </section>
+
+  <!-- 11. PATTERN 1 -->
+  <section class="slide">
+    <div class="pat-head"><span class="pat-num">P1</span><h2 style="border:none;padding:0;margin:0">Daily average temperature</h2><span class="owner">Florian</span></div>
+    <div class="content"><div class="cols wide-left">
+      <div>
+        <p>Average temperature <b>per station per day</b> across 2025.</p>
+        <dl class="kv" style="margin-top:.6em">
+          <dt>How</dt><dd><code>groupByKey</code>(station+day) → <code>aggregate</code> → <b>KTable</b> of running averages</dd>
+          <dt>Output</dt><dd><code>daily-average-temperature</code></dd>
+          <dt>Dashboard</dt><dd>NOAA Kafka Stream Processing</dd>
+        </dl>
+        <div class="callout" style="margin-top:.7em"><p class="muted">The foundational aggregation pattern — most later patterns build on this shape.</p></div>
+      </div>
+      <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-05-29%20112959.png" alt="Pattern 1 daily average temperature dashboard"><span class="shot-cap">Daily average temperature per station</span></div>
+    </div></div>
+    <aside class="notes"><b>Notes:</b> Stateful aggregation materialized as a KTable, one row per station+day. This established the JSON serde + dashboard-sink pattern reused everywhere.</aside>
+  </section>
+
+  <!-- 12. PATTERN 2 -->
+  <section class="slide">
+    <div class="pat-head"><span class="pat-num">P2</span><h2 style="border:none;padding:0;margin:0">Frost days per month</h2><span class="owner">Chris</span></div>
+    <div class="content"><div class="cols wide-left">
+      <div>
+        <p>Count <b>frost days</b> (<code>temp &lt; 0 °C</code>) per station and month.</p>
+        <dl class="kv" style="margin-top:.6em">
+          <dt>How</dt><dd>Predicate count; each frost <b>day counted once</b>, then aggregated per month</dd>
+          <dt>Output</dt><dd><code>monthly-frost-days</code></dd>
+          <dt>Dashboard</dt><dd>NOAA Frost Days 2025</dd>
+        </dl>
+        <div class="callout amber" style="margin-top:.7em"><p class="muted">De-duplication matters: many readings per day → count the day, not each reading.</p></div>
+      </div>
+      <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-06%20191852.png" alt="Pattern 2 frost days dashboard"><span class="shot-cap">Frost days per station / month</span></div>
+    </div></div>
+    <aside class="notes"><b>Notes:</b> Predicate-based counting with distinct-day logic to avoid overcounting.</aside>
+  </section>
+
+  <!-- 13. PATTERN 3 -->
+  <section class="slide">
+    <div class="pat-head"><span class="pat-num">P3</span><h2 style="border:none;padding:0;margin:0">Rapid temperature change</h2><span class="owner">Haroldas</span></div>
+    <div class="content"><div class="cols wide-left">
+      <div>
+        <p>Detect sudden warming/cooling — e.g. passing weather fronts.</p>
+        <dl class="kv" style="margin-top:.6em">
+          <dt>How</dt><dd>Rate of change <b>°C/h</b> between consecutive readings, aggregated over a <b>tumbling 24 h window</b> → min / max / avg</dd>
+          <dt>Output</dt><dd><code>rapid-temperature-change</code></dd>
+          <dt>Dashboard</dt><dd>NOAA Rapid Temperature Change 2025</dd>
+        </dl>
+      </div>
+      <div class="shot-wrap"><img class="shot" src="assets/Pattern3.png" alt="Pattern 3 rapid temperature change dashboard"><span class="shot-cap">Rate-of-change per window</span></div>
+    </div></div>
+    <aside class="notes"><b>Notes:</b> Summary statistics on a time-derivative — first difference over time, then windowed min/max/avg.</aside>
+  </section>
+
+  <!-- 14. PATTERN 4 -->
+  <section class="slide">
+    <div class="pat-head"><span class="pat-num">P4</span><h2 style="border:none;padding:0;margin:0">Tourism weather quality index</h2><span class="owner">Mykola</span></div>
+    <div class="content"><div class="cols">
+      <div>
+        <p>A 0–100 quality score per <b>region</b>, per day.</p>
+        <dl class="kv" style="margin-top:.6em">
+          <dt>Inputs</dt><dd>Temperature, wind, visibility → sky-clarity proxy</dd>
+          <dt>Region</dt><dd>From ISD station metadata (e.g. <code>US-CA</code>)</dd>
+          <dt>Window</dt><dd>Tumbling 24 h</dd>
+          <dt>Output</dt><dd><code>tourism-weather-quality</code></dd>
+        </dl>
+      </div>
+      <div>
+        <div class="callout green"><h4>Scoring formula</h4>
+          <p><code>quality = temp·0.55 + wind·0.25 + sky·0.20</code></p>
+          <p class="muted" style="margin-top:.4em">Temperature weighted highest (main comfort driver). Classes: <b>poor / ok / good / excellent</b>.</p>
+        </div>
+        <p class="muted" style="margin-top:.7em">ISD has no sunshine field → visibility is an honest sky-clarity proxy (10 km+ = very clear), not a fake value.</p>
+      </div>
+    </div></div>
+    <aside class="notes"><b>Notes:</b> Region comes from real station-history metadata, not an ID prefix. The visibility→clarity substitution is a defensible modeling decision worth calling out.</aside>
+  </section>
+
+  <!-- 15. PATTERN 5 -->
+  <section class="slide">
+    <div class="pat-head"><span class="pat-num">P5</span><h2 style="border:none;padding:0;margin:0">Average rain duration</h2><span class="owner">Florian</span></div>
+    <div class="content"><div class="cols wide-left">
+      <div>
+        <p>Average precipitation duration per station for 2025.</p>
+        <dl class="kv" style="margin-top:.6em">
+          <dt>How</dt><dd>Aggregation over parsed rain-duration values → yearly average</dd>
+          <dt>Output</dt><dd><code>yearly-average-rain-duration</code></dd>
+          <dt>Dashboard</dt><dd>Average rain duration 2025</dd>
+        </dl>
+        <div class="callout" style="margin-top:.7em"><p class="muted">Same aggregation shape as P1, on the precipitation dimension.</p></div>
+      </div>
+      <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-05-31%20172712.png" alt="Pattern 5 average rain duration dashboard"><span class="shot-cap">Average rain duration per station</span></div>
+    </div></div>
+    <aside class="notes"><b>Notes:</b> Rain duration is parsed from the AA1–AA4 precipitation groups in the ISD record.</aside>
+  </section>
+
+  <!-- 16. PATTERN 6 -->
+  <section class="slide">
+    <div class="pat-head"><span class="pat-num">P6</span><h2 style="border:none;padding:0;margin:0">Top-10 hottest &amp; coldest stations</h2><span class="owner">Chris</span></div>
+    <div class="content"><div class="cols wide-left">
+      <div>
+        <p>Rank stations by <b>peak temperature</b> in 2025.</p>
+        <dl class="kv" style="margin-top:.6em">
+          <dt>How</dt><dd>Ordered summary statistics + <b>Top-N</b> over a full-year window</dd>
+          <dt>Why full year</dt><dd>Data is historical, not a live-growing stream</dd>
+          <dt>Output</dt><dd><code>daily-temperature-ranking</code></dd>
+          <dt>Dashboard</dt><dd>NOAA Temperature Ranking 2025</dd>
+        </dl>
+      </div>
+      <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-06%20193219.png" alt="Pattern 6 temperature ranking dashboard"><span class="shot-cap">Hottest / coldest ranking</span></div>
+    </div></div>
+    <aside class="notes"><b>Notes:</b> Hot ranks by max temperature, cold by min. Full-year window chosen deliberately given the bounded historical dataset.</aside>
+  </section>
+
+  <!-- 17. PATTERN 7 -->
+  <section class="slide">
+    <div class="pat-head"><span class="pat-num">P7</span><h2 style="border:none;padding:0;margin:0">Temperature trend forecasting</h2><span class="owner">Haroldas</span></div>
+    <div class="content"><div class="cols wide-left">
+      <div>
+        <p>Short-term forecast via <b>linear regression</b>.</p>
+        <dl class="kv" style="margin-top:.6em">
+          <dt>How</dt><dd>Least-squares slope over a <b>30-day sliding window</b> advancing 1 day</dd>
+          <dt>Forecast</dt><dd>Project the line <b>+24 h</b> from the latest reading</dd>
+          <dt>Output</dt><dd><code>temperature-forecast</code></dd>
+          <dt>Dashboard</dt><dd>NOAA Temperature Forecast 2025</dd>
+        </dl>
+      </div>
+      <div class="shot-wrap"><img class="shot" src="assets/Pattern7.png" alt="Pattern 7 temperature forecast dashboard"><span class="shot-cap">Trend + 24 h projection</span></div>
+    </div></div>
+    <aside class="notes"><b>Notes:</b> Forecast is anchored at the most recent observation, not the window average, so the projection starts from reality. Sliding window = overlapping, advances daily.</aside>
+  </section>
+
+  <!-- 18. PATTERN 8 -->
+  <section class="slide">
+    <div class="pat-head"><span class="pat-num">P8</span><h2 style="border:none;padding:0;margin:0">Caribbean maritime routing</h2><span class="owner">Mykola</span></div>
+    <div class="content"><div class="cols">
+      <div>
+        <p>The only <b>stream-stream join</b>: AIS ship positions ⋈ NDBC buoy observations.</p>
+        <dl class="kv" style="margin-top:.6em">
+          <dt>Join key</dt><dd>Sea area (from lat/long bounding boxes)</dd>
+          <dt>Window</dt><dd>30-min event-time join window</dd>
+          <dt>Output</dt><dd><code>marine.route.recommendations</code></dd>
+        </dl>
+      </div>
+      <div>
+        <div class="callout green"><h4>Risk model</h4>
+          <p><code>risk = min(100, wave·22 + wind·2.5)</code></p>
+          <p class="muted" style="margin-top:.4em">Classes <b>LOW / MODERATE / HIGH</b> → route instruction + ETA adjustment (+0 / +30 / +90 min).</p>
+        </div>
+        <p class="muted" style="margin-top:.7em">Separate producer &amp; topics because ISD has no vessel/buoy data. Uses event time to replay 2025 correctly.</p>
+      </div>
+    </div></div>
+    <aside class="notes"><b>Notes:</b> This is the pattern that shows a true two-stream join — both streams re-keyed to sea area, joined within a time window. Everything else is single-stream aggregation or state machines.</aside>
+  </section>
+
+  <!-- 19. PATTERN 9 -->
+  <section class="slide">
+    <div class="pat-head"><span class="pat-num">P9</span><h2 style="border:none;padding:0;margin:0">Wet period detection</h2><span class="owner">Mykola</span></div>
+    <div class="content"><div class="cols wide-left">
+      <div>
+        <p>A <b>state machine</b> per station over the observation stream.</p>
+        <dl class="kv" style="margin-top:.6em">
+          <dt>Enter wet</dt><dd>First reading with <code>rainDuration &gt; 0</code></dd>
+          <dt>Stay open</dt><dd>While precipitation continues</dd>
+          <dt>Close</dt><dd>First dry reading → emit <code>WetPeriodEvent</code> (start, end, duration, count)</dd>
+          <dt>State</dt><dd><b>Persistent key-value store</b> keyed by station</dd>
+        </dl>
+      </div>
+      <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-11%20at%2012.43.43.png" alt="Pattern 9 wet period detection dashboard"><span class="shot-cap">Detected wet periods</span></div>
+    </div></div>
+    <aside class="notes"><b>Notes:</b> Explicit persistent state store — the open wet period survives a restart because it's backed by a changelog. Good segue into the fault-tolerance section.</aside>
+  </section>
+
+  <!-- 20. PATTERN 10 -->
+  <section class="slide">
+    <div class="pat-head"><span class="pat-num">P10</span><h2 style="border:none;padding:0;margin:0">Blizzard detection</h2><span class="owner">Chris</span></div>
+    <div class="content"><div class="cols wide-left">
+      <div>
+        <p>Detect blizzard-like conditions from combined thresholds.</p>
+        <dl class="kv" style="margin-top:.6em">
+          <dt>How</dt><dd>Windowed detection: <b>freezing</b> (≤ 0 °C) <b>and</b> high wind (~12 m/s) within a 24 h window</dd>
+          <dt>Output</dt><dd><code>blizzard-events</code></dd>
+          <dt>Dashboard</dt><dd>NOAA Blizzard Events 2025</dd>
+        </dl>
+      </div>
+      <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-06%20195120.png" alt="Pattern 10 blizzard events dashboard"><span class="shot-cap">Detected blizzard events</span></div>
+    </div></div>
+    <aside class="notes"><b>Notes:</b> Multi-condition windowed event detection — combines two parsed dimensions (temperature + wind) with configurable thresholds.</aside>
+  </section>
+
+  <!-- 21. PATTERN 11 -->
+  <section class="slide">
+    <div class="pat-head"><span class="pat-num">P11</span><h2 style="border:none;padding:0;margin:0">Weather regime clustering (MOA)</h2><span class="owner">Florian · bonus</span></div>
+    <div class="content"><div class="cols wide-left">
+      <div>
+        <p><b>Online ML clustering</b> with MOA's <b>CluStream</b> to find weather regimes (Großwetterlagen).</p>
+        <dl class="kv" style="margin-top:.5em">
+          <dt>Features</dt><dd>avg temp, temp range, avg &amp; max wind, sky-clarity, rain duration</dd>
+          <dt>Scaling</dt><dd>Min-max normalized to 0–1</dd>
+          <dt>Output</dt><dd><code>weather-regimes</code></dd>
+          <dt>Dashboard</dt><dd>NOAA Weather Regimes 2025</dd>
+        </dl>
+        <div class="callout purple" style="margin-top:.6em"><h4>Cluster → label</h4>
+          <p class="muted" style="font-size:.92em"><code>cold_windy_wet</code> · <code>cold_windy_clear</code> · <code>mild_wet</code> · <code>mild_clear_breezy</code> · <code>hot_dry_clear</code> · <code>volatile_windy</code></p>
+        </div>
+      </div>
+      <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-11%20174357.png" alt="Pattern 11 weather regime clustering dashboard"><span class="shot-cap">Learned weather regimes per station</span></div>
+    </div></div>
+    <aside class="notes"><b>Notes:</b> True online/streaming ML — CluStream updates cluster micro-clusters incrementally as feature vectors arrive. Numeric cluster centers are mapped to the six readable regime labels in Grafana. Feature vector reuses signals from other patterns (could be optimized to share computation). Second screenshot available: assets/Screenshot 2026-06-11 174405.png.</aside>
+  </section>
+
+  <!-- 22. CHALLENGES -->
+  <section class="slide">
+    <h2>Challenges</h2>
+    <div class="content">
+      <div class="grid2">
+        <div class="card-box"><h4 style="color:var(--brand)">Python had no usable Streams API</h4><p class="muted">Libraries deprecated/undeveloped → migrated processing to Java Kafka Streams.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Resource pressure</h4><p class="muted">Running all 11 patterns spiked disk &amp; CPU → added <code>STREAM_PATTERN</code> to run one at a time (with <code>--force-recreate</code>).</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Large datasets</h4><p class="muted">1.5 GB / ~12.8 k files + a big AIS archive → configurable caps for local runs.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Fixed-width ISD parsing</h4><p class="muted">Column offsets, quality codes, missing-value sentinels — easy to get subtly wrong.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Missing dimensions</h4><p class="muted">No sunshine (→ visibility proxy) and no marine data (→ separate producer) in ISD.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Replay vs resume</h4><p class="muted">Managing the Kafka Streams <code>application.id</code> to control when we resume vs reprocess.</p></div>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> The application.id challenge is the bridge into the fault-tolerance section — the ID is derived deterministically from the pattern config so the same config resumes and a changed config replays.</aside>
+  </section>
+
+  <!-- 23. FAULT TOLERANCE A -->
+  <section class="slide">
+    <h2>What happens if a service stops?</h2>
+    <div class="content">
+      <div class="stack" style="gap:.8em">
+        <div class="callout green"><h4>Producer stops</h4>
+          <p class="muted">Keeps a <b>JSON checkpoint</b> in a Docker volume (<code>producer_state</code>): which files are done + records sent per file. On restart it <b>skips completed files</b> (matched by size/modified) and <b>resumes a partial file after the last confirmed record</b>. No loss, no duplicate re-send. (Marine producer tracks completed dates.)</p>
+        </div>
+        <div class="callout amber"><h4>Kafka broker stops</h4>
+          <p class="muted">The log is durable on disk (<code>kafka_data</code>) and the raw topic has <b>infinite retention</b> (<code>retention.ms=-1</code>). Nothing is lost; on restart every message is still there. Producer uses <code>acks=all</code> + retries.</p>
+        </div>
+        <div class="callout"><h4>Stream processor (pattern) stops</h4>
+          <p class="muted">Kafka Streams <b>commits consumer offsets</b> (every ~1 s). On restart with the <b>same <code>application.id</code></b> it resumes from the last committed offset — it does <b>not</b> restart from zero.</p>
+        </div>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> Three independent failure domains, each with its own recovery mechanism. The theme: state lives in durable stores (volume, Kafka log, offsets), never only in memory.</aside>
+  </section>
+
+  <!-- 24. FAULT TOLERANCE B -->
+  <section class="slide">
+    <h2>Is data lost? Can we resume at the last row?</h2>
+    <div class="content">
+      <div class="callout green" style="margin-bottom:.2em"><p><b>No data is lost — and yes, it can be re-read and continued at the last processed record.</b></p></div>
+      <div class="grid2">
+        <div class="card-box">
+          <h4 style="color:var(--brand)">Why nothing is lost</h4>
+          <p class="muted">Kafka is a <b>durable, replayable log</b>; the raw topic has infinite retention. Any consumer can re-read from any offset, at any time.</p>
+        </div>
+        <div class="card-box">
+          <h4 style="color:var(--brand)">Continue at the "last row"</h4>
+          <p class="muted">With the <b>same <code>application.id</code></b>, the stream continues from the <b>last committed offset</b> — the offset <i>is</i> the bookmark for the last row processed.</p>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:.3em">
+        <p class="muted"><code>auto.offset.reset = earliest</code>: a <b>fresh</b> <code>application.id</code> (new consumer group) intentionally <b>replays the entire 2025 year</b> — useful to rebuild dashboards from scratch. The ID is generated deterministically from the pattern config (hash of pattern + year + window params): <b>same config → resume · changed config → full replay.</b></p>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> This is the crux. Two behaviors, both intentional: resume (same ID) vs replay (new ID). Because retention is infinite, replay is always possible. The deterministic ID means you don't accidentally replay just by restarting.</aside>
+  </section>
+
+  <!-- 25. FAULT TOLERANCE C -->
+  <section class="slide">
+    <h2>Where does the last state come from?</h2>
+    <div class="content">
+      <p class="muted" style="margin-bottom:.3em">A layered state model — each layer recovers from a durable source:</p>
+      <div class="stack" style="gap:.6em">
+        <div class="callout green"><h4>1 · Producer progress</h4><p class="muted">JSON checkpoint file in the <code>producer_state</code> volume — which files &amp; which record number.</p></div>
+        <div class="callout"><h4>2 · Consumer position</h4><p class="muted">Committed offsets in Kafka's internal <code>__consumer_offsets</code> topic, keyed by <code>application.id</code>.</p></div>
+        <div class="callout purple"><h4>3 · Operator / aggregation state</h4><p class="muted">Windows, the wet/dry state machine, rankings, forecasts, clustering → local <b>RocksDB state stores</b> backed by Kafka <b>changelog topics</b>. On restart the store is <b>restored from its changelog</b>, so aggregations resume where they left off.</p></div>
+        <div class="callout amber"><h4>4 · Dashboard layer (Postgres)</h4><p class="muted">Idempotent upserts keyed by station/day/month (daily avg, rain, frost); event tables are rebuilt from the replay. <b>Honest caveat:</b> the raw/parsed counters are simple increments, so a full replay under a <i>fresh</i> ID inflates those counters unless the ID resumes.</p></div>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> The answer to "where does state come from" is layered: producer file, offsets topic, changelog-backed state stores, and Postgres. The changelog restore is the classic Kafka Streams fault-tolerance mechanism. Be upfront about the counter caveat — shows we understand idempotency.</aside>
+  </section>
+
+  <!-- 26. LESSONS -->
+  <section class="slide">
+    <h2>Lessons learned</h2>
+    <div class="content">
+      <div class="grid2">
+        <div class="card-box"><h4 style="color:var(--brand)">Pick the ecosystem, not just the language</h4><p class="muted">Kafka Streams' first-class support on the JVM outweighed our initial Python preference.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Durability is designed, not assumed</h4><p class="muted">Volumes + infinite retention + offsets + changelogs together give end-to-end recovery.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Event time is everything</h4><p class="muted">Replaying history correctly is only possible because windows use <code>observed_at</code>.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Idempotency vs replay</h4><p class="muted">Upserts survive re-processing; naive counters don't — design outputs for replay.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Model honestly</h4><p class="muted">Visibility-as-clarity and sea-area join keys are documented approximations, not fakes.</p></div>
+        <div class="card-box"><h4 style="color:var(--brand)">Resource-aware ops</h4><p class="muted">One toggle (<code>STREAM_PATTERN</code>) made the whole thing runnable on laptops.</p></div>
+      </div>
+    </div>
+    <aside class="notes"><b>Notes:</b> Tie back to the fault-tolerance story — the recovery guarantees are the strongest part of the project.</aside>
+  </section>
+
+  <!-- 27. THANK YOU -->
+  <section class="slide title-slide" style="justify-content:center">
+    <div class="eyebrow">Thank you</div>
+    <h1>Questions?</h1>
+    <div class="sub">NOAA Weather Stream Processing with Kafka</div>
+    <div class="meta">
+      <div>Florian · Chris · Mykola · Haroldas</div>
+      <div style="margin-top:.5em">Grafana <code style="background:rgba(255,255,255,.15);color:#fff">localhost:3000</code> · Kafka <code style="background:rgba(255,255,255,.15);color:#fff">:19094</code> · Postgres <code style="background:rgba(255,255,255,.15);color:#fff">:15432</code></div>
+    </div>
+    <aside class="notes"><b>Notes:</b> Likely questions: exactly-once vs at-least-once (we're at-least-once with idempotent upserts); scaling to multiple partitions; why Postgres instead of interactive queries; how CluStream updates online. Have answers ready.</aside>
+  </section>
+
+</div>
+
+<div class="footer">
+  <span class="brand-mini">NOAA Weather Stream Processing · Kafka</span>
+  <span class="kbd">← / →  ·  S = notes  ·  F = fullscreen</span>
+  <span id="counter">1 / 27</span>
+</div>
+<div class="nav">
+  <button id="prev" aria-label="Previous">‹</button>
+  <button id="next" aria-label="Next">›</button>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const progress = document.getElementById('progress');
+  const counter = document.getElementById('counter');
+  let i = 0;
+
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, idx) => s.classList.toggle('active', idx === i));
+    progress.style.width = ((i + 1) / slides.length * 100) + '%';
+    counter.textContent = (i + 1) + ' / ' + slides.length;
+    if (location.hash !== '#' + (i + 1)) history.replaceState(null, '', '#' + (i + 1));
+  }
+  function next() { show(i + 1); }
+  function prev() { show(i - 1); }
+
+  document.addEventListener('keydown', (e) => {
+    if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); next(); }
+    else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); prev(); }
+    else if (e.key === 'Home') { show(0); }
+    else if (e.key === 'End') { show(slides.length - 1); }
+    else if (e.key.toLowerCase() === 's') { document.body.classList.toggle('show-notes'); }
+    else if (e.key.toLowerCase() === 'f') {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+      else document.exitFullscreen();
+    }
+  });
+
+  document.getElementById('next').addEventListener('click', next);
+  document.getElementById('prev').addEventListener('click', prev);
+
+  const start = parseInt((location.hash || '#1').slice(1), 10);
+  show(Number.isFinite(start) ? start - 1 : 0);
+</script>
+</body>
+</html>
