@@ -368,3 +368,7 @@ docker compose up --build -d --force-recreate noaa-stream-client
 
 ![Pattern 11: Weather Regime Clustering](./assets/Screenshot%202026-06-11%20174357.png)
 ![Pattern 11: Weather Regime Clustering cont.](./assets/Screenshot%202026-06-11%20174405.png)
+
+## AI Disclaimer
+
+Generative AI such as Codex with GPT 5.5 was used in this project to generate specific code parts, doing some research (we checked most of the sources manually) and also for the presentation. Designing the application, making architectural decisions, making conceptual code decisions, interpretation, and documentation of our thoughts (in the readme here) was not done using AI.
