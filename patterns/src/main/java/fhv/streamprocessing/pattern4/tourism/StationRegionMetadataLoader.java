@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.net.URLConnection;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -18,6 +19,19 @@ import java.util.Map;
  * Loads station-to-region mappings used by the tourism quality pattern.
  */
 public final class StationRegionMetadataLoader {
+    private static final Map<String, String> FIPS_COUNTRY_NAMES = Map.ofEntries(
+        Map.entry("GM", "Germany"),
+        Map.entry("UK", "United Kingdom"),
+        Map.entry("SV", "Svalbard"),
+        Map.entry("EZ", "Czech Republic"),
+        Map.entry("DA", "Denmark"),
+        Map.entry("JA", "Japan"),
+        Map.entry("KS", "South Korea"),
+        Map.entry("RS", "Russia"),
+        Map.entry("SP", "Spain"),
+        Map.entry("SZ", "Switzerland")
+    );
+
     private StationRegionMetadataLoader() {
     }
 
@@ -25,11 +39,31 @@ public final class StationRegionMetadataLoader {
         if (stationHistoryUrl == null || stationHistoryUrl.isBlank()) {
             return StationRegionResolver.empty();
         }
+        URI uri;
+        try {
+            uri = URI.create(stationHistoryUrl);
+        } catch (IllegalArgumentException exception) {
+            System.err.printf("Could not load station regions from %s: %s%n", stationHistoryUrl, exception.getMessage());
+            return StationRegionResolver.empty();
+        }
+
+        String scheme = uri.getScheme();
+        if (scheme != null && !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
+            try {
+                URLConnection connection = uri.toURL().openConnection();
+                connection.setConnectTimeout(20_000);
+                connection.setReadTimeout(120_000);
+                return load(connection.getInputStream());
+            } catch (IOException | IllegalArgumentException exception) {
+                System.err.printf("Could not load station regions from %s: %s%n", stationHistoryUrl, exception.getMessage());
+                return StationRegionResolver.empty();
+            }
+        }
 
         HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(20))
             .build();
-        HttpRequest request = HttpRequest.newBuilder(URI.create(stationHistoryUrl))
+        HttpRequest request = HttpRequest.newBuilder(uri)
             .timeout(Duration.ofSeconds(60))
             .GET()
             .build();
@@ -76,7 +110,7 @@ public final class StationRegionMetadataLoader {
         String wban = clean(slice(line, 7, 12));
         String countryCode = clean(slice(line, 43, 48));
         String stateCode = clean(slice(line, 48, 51));
-        if (usaf == null || wban == null || countryCode == null) {
+        if (!isStationIdPart(usaf, 6) || !isStationIdPart(wban, 5) || !isCountryCode(countryCode)) {
             return null;
         }
 
@@ -86,6 +120,10 @@ public final class StationRegionMetadataLoader {
     }
 
     private static String countryName(String countryCode) {
+        String fipsName = FIPS_COUNTRY_NAMES.get(countryCode);
+        if (fipsName != null) {
+            return fipsName;
+        }
         if (countryCode.length() == 2) {
             String displayCountry = new Locale.Builder()
                 .setRegion(countryCode)
@@ -108,6 +146,14 @@ public final class StationRegionMetadataLoader {
     private static String clean(String value) {
         String cleaned = value == null ? "" : value.trim().replaceAll("\\s+", " ");
         return cleaned.isEmpty() ? null : cleaned;
+    }
+
+    private static boolean isStationIdPart(String value, int length) {
+        return value != null && value.length() == length && value.matches("[A-Z0-9]+");
+    }
+
+    private static boolean isCountryCode(String value) {
+        return value != null && value.length() == 2 && value.matches("[A-Z]+");
     }
 
     private record StationRegionRow(String stationId, WeatherRegion region) {

@@ -23,4 +23,11 @@ class StationMetadataLoaderTest {
         assertEquals("19310101", metadata.get().periodBegin());
         assertEquals("20260530", metadata.get().periodEnd());
     }
+
+    @Test
+    void ignoresIsdStationHistoryPreambleLines() {
+        assertTrue(StationMetadataLoader.parseLine("Integrated Surface Database Station History, August 2025").isEmpty());
+        assertTrue(StationMetadataLoader.parseLine(" USAF = Air Force station ID. May contain a letter in the first position.").isEmpty());
+        assertTrue(StationMetadataLoader.parseLine("- Missing station name, etc indicate the metadata are not currently available.").isEmpty());
+    }
 }

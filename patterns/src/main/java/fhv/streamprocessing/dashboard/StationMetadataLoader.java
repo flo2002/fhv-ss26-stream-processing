@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
+import java.net.URLConnection;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -27,11 +28,31 @@ public final class StationMetadataLoader {
         if (stationHistoryUrl == null || stationHistoryUrl.isBlank()) {
             return;
         }
+        URI uri;
+        try {
+            uri = URI.create(stationHistoryUrl);
+        } catch (IllegalArgumentException exception) {
+            System.err.printf("Could not load NOAA station metadata from %s: %s%n", stationHistoryUrl, exception.getMessage());
+            return;
+        }
+
+        String scheme = uri.getScheme();
+        if (scheme != null && !scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
+            try {
+                URLConnection connectionHandle = uri.toURL().openConnection();
+                connectionHandle.setConnectTimeout(20_000);
+                connectionHandle.setReadTimeout(120_000);
+                upsertStationMetadata(connection, connectionHandle.getInputStream());
+            } catch (IOException | SQLException | IllegalArgumentException exception) {
+                System.err.printf("Could not load NOAA station metadata from %s: %s%n", stationHistoryUrl, exception.getMessage());
+            }
+            return;
+        }
 
         HttpClient client = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(20))
             .build();
-        HttpRequest request = HttpRequest.newBuilder(URI.create(stationHistoryUrl))
+        HttpRequest request = HttpRequest.newBuilder(uri)
             .timeout(Duration.ofSeconds(60))
             .GET()
             .build();
@@ -127,7 +148,7 @@ public final class StationMetadataLoader {
         String usaf = clean(slice(line, 0, 6));
         String wban = clean(slice(line, 7, 12));
         String stationName = clean(slice(line, 13, 43));
-        if (usaf == null || wban == null || stationName == null) {
+        if (!isStationIdPart(usaf, 6) || !isStationIdPart(wban, 5) || stationName == null) {
             return Optional.empty();
         }
 
@@ -186,6 +207,10 @@ public final class StationMetadataLoader {
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    private static boolean isStationIdPart(String value, int length) {
+        return value != null && value.length() == length && value.matches("[A-Z0-9]+");
     }
 
     record StationMetadata(
