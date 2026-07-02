@@ -50,6 +50,8 @@
   .content { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: .6em; min-height: 0; }
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 3vw; align-items: center; }
   .cols.wide-left { grid-template-columns: 1.15fr .85fr; }
+  .cols.dashboard-slide { grid-template-columns: minmax(0,.9fr) minmax(0,1.1fr); align-items: center; }
+  .dashboard-slide .shot { max-height: 58vh; }
 
   /* Title slide */
   .title-slide { justify-content: center; align-items: flex-start;
@@ -556,7 +558,7 @@ ratePerHour = (temperature - lastTemperature) / elapsedHours;</pre></div>
   <!-- 14. PATTERN 4 -->
   <section class="slide">
     <div class="pat-head"><span class="pat-num">P4</span><h2 style="border:none;padding:0;margin:0">Tourism weather quality index</h2><span class="owner">Mykola</span></div>
-    <div class="content"><div class="cols">
+    <div class="content"><div class="cols dashboard-slide">
       <div>
         <span class="pattern-type">Pattern: Enrichment + windowed aggregation</span>
         <p>A 0–100 quality score per <b>region</b>, per day.</p>
@@ -576,14 +578,13 @@ observations.map((k,o) -&gt; pair(regionOf(o),o))
 
 <span class="c">// Aggregate: combine normalized comfort sub-scores.</span>
 quality = tempScore*.55 + windScore*.25 + skyScore*.20;</pre></div>
-      </div>
-      <div>
         <div class="callout green"><h4>Scoring formula</h4>
           <p><code>quality = temp·0.55 + wind·0.25 + sky·0.20</code></p>
           <p class="muted" style="margin-top:.4em">Temperature weighted highest (main comfort driver). Classes: <b>poor / ok / good / excellent</b>.</p>
         </div>
         <p class="muted" style="margin-top:.7em">ISD has no sunshine field → visibility is an honest sky-clarity proxy (10 km+ = very clear), not a fake value.</p>
       </div>
+      <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-07-02%20at%2009.52.03.png" alt="Pattern 4 tourism weather quality dashboard"><span class="shot-cap">Tourism weather quality dashboard</span></div>
     </div></div>
     <aside class="notes"><b>Notes:</b> Region comes from real station-history metadata, not an ID prefix. The visibility→clarity substitution is a defensible modeling decision worth calling out.</aside>
   </section>
@@ -679,7 +680,7 @@ slope = (count*sumXY - sumX*sumY) / denominator;</pre></div>
   <!-- 18. PATTERN 8 -->
   <section class="slide">
     <div class="pat-head"><span class="pat-num">P8</span><h2 style="border:none;padding:0;margin:0">Caribbean maritime routing</h2><span class="owner">Mykola</span></div>
-    <div class="content"><div class="cols">
+    <div class="content"><div class="cols dashboard-slide">
       <div>
         <span class="pattern-type">Pattern: Stream–stream join</span>
         <p>The only <b>stream-stream join</b>: AIS ship positions ⋈ NDBC buoy observations.</p>
@@ -699,14 +700,13 @@ ais.selectKey((k,e) -&gt; e.seaAreaId())
 <span class="c">// Helper converts joined buoy conditions into route risk.</span>
 risk = min(100, waveHeight*22 + windSpeed*2.5);
 delay = risk &gt;= 75 ? 90 : risk &gt;= 45 ? 30 : 0;</pre></div>
-      </div>
-      <div>
         <div class="callout green"><h4>Risk model</h4>
           <p><code>risk = min(100, wave·22 + wind·2.5)</code></p>
           <p class="muted" style="margin-top:.4em">Classes <b>LOW / MODERATE / HIGH</b> → route instruction + ETA adjustment (+0 / +30 / +90 min).</p>
         </div>
         <p class="muted" style="margin-top:.7em">Separate producer &amp; topics because ISD has no vessel/buoy data. Uses event time to replay 2025 correctly.</p>
       </div>
+      <div class="shot-wrap"><img class="shot" src="assets/Screenshot%202026-06-11%20at%2019.03.12.png" alt="Pattern 8 Caribbean maritime routing dashboard"><span class="shot-cap">Maritime routing dashboard</span></div>
     </div></div>
     <aside class="notes"><b>Notes:</b> This is the pattern that shows a true two-stream join — both streams re-keyed to sea area, joined within a time window. Everything else is single-stream aggregation or state machines.</aside>
   </section>
